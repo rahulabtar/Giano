@@ -6,12 +6,12 @@
 #include <SerialFlash.h>
 
 // GUItool: begin automatically generated code
-AudioSynthWaveform synth_1;
+AudioSynthWaveform       synth_1;
 AudioSynthWaveformSine   sine1;          //xy=49.33332824707031,183.3333282470703
 AudioOutputI2S           i2s1;           //xy=187.33332443237305,181.3333396911621
 AudioConnection          patchCord1(synth_1, 0, i2s1, 0);
 AudioConnection          patchCord2(synth_1, 0, i2s1, 1);
-AudioControlSGTL5000 sgtl5000_1;
+AudioControlSGTL5000     sgtl5000_1;
 
 // GUItool: end automatically generated code
 
