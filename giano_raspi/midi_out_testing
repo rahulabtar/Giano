@@ -1,0 +1,24 @@
+import mido
+
+# #to figure out what available ports are
+# print ('Available Midi Output Ports:')
+# for port in mido.get_output_names():
+#     print(repr(port))
+
+msg=mido.Message('note_on', note=60)
+# print (msg.type)
+# print(msg.note)
+# print(msg.bytes())
+# print(msg.copy(channel=2))
+
+port = mido.open_output('Midi Through:Midi Through Port-0 14:0')
+port.send(msg)
+
+with mido.open_input() as inport:
+    for msg in inport:
+        print(msg)
+
+mid_filepath = mido.MidiFile("/home/giano/Downloads/Pirates of the Caribbean - He's a Pirate (3).mid")
+# mid = mido.MidiFile("Pirates of the Caribbean - Hes a Pirate (3).mid")
+for msg in mid_filepath.play():
+    port.send(msg)
