@@ -1,24 +1,22 @@
 import mido
 
-# #to figure out what available ports are
-# print ('Available Midi Output Ports:')
-# for port in mido.get_output_names():
-#     print(repr(port))
+print(mido.get_output_names())
+print(mido.get_input_names())
 
-msg=mido.Message('note_on', note=60)
-# print (msg.type)
-# print(msg.note)
-# print(msg.bytes())
-# print(msg.copy(channel=2))
+with mido.open_output() as out_:
+	with mido.open_input() as in_:
+		print("out:")
+		print(out_)
+		print("in:")
+		print(in_)
 
-port = mido.open_output('Midi Through:Midi Through Port-0 14:0')
-port.send(msg)
+		msg = mido.Message('note_on', note= 60) # test note
+		out_.send(msg)
+		print("MESSAGE SENT YAY")
 
-with mido.open_input() as inport:
-    for msg in inport:
-        print(msg)
-
-mid_filepath = mido.MidiFile("/home/giano/Downloads/Pirates of the Caribbean - He's a Pirate (3).mid")
-# mid = mido.MidiFile("Pirates of the Caribbean - Hes a Pirate (3).mid")
-for msg in mid_filepath.play():
-    port.send(msg)
+		for msg in in_.iter_pending():
+			if msg:
+				print("O YA MESSAGE RECEIEVED")
+				print(msg)
+				break 
+			else: print("msg not sent sky probably made a typo")
