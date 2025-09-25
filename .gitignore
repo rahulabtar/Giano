@@ -14,5 +14,10 @@ __pycache__
 .vscode/
 .idea/
 
+# Pictures
+*.png
+*.jpeg
+*.jpg
+
 #
 .DS_Store
