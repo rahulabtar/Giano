@@ -25,8 +25,9 @@ void setup() {
   (will help us catch errors for now, can be converted into a timeout and retry later)
 */
 void loop() {
-  if(usbMidi.read()) {
-    processsMIDIData();
+  if(usbMIDI.read()) {
+    Serial.print("NOTE RECEIVED: PROCESSING NOW")
+    processMIDIData();
   }
 }
 
@@ -37,21 +38,21 @@ void loop() {
 void processMIDIData(){
 
   // gives us channel of message received - unsure if we need this
-  channel = usbMIDI.getChannel();
+  int channel = usbMIDI.getChannel();
   // gives us status updates of MIDI, we only care about ON/OFF
-  onStatus = usbMIDI.getType();
+  int onStatus = usbMIDI.getType();
   // gives us first data byte associated with pitch
-  pitch = usbMIDI.getData1();
+  int pitch = usbMIDI.getData1();
   // gives us second data byte associate with velocity
-  velocity = usbMIDI.getData2();
+  int velocity = usbMIDI.getData2();
   // gives us port/cable data byte, helpful to control MIDI routing
-  cable = usbMIDI.getCable();
+  int cable = usbMIDI.getCable();
 
 
   // switch case regarding if the MIDI message is ON or OFF
   // NOTE: there are other cases we can play around with if needed!
   switch(onStatus) {
-    case usbMIDI.noteON:
+    case usbMIDI.NoteOn:
       playAudioHat();
       Serial.print("Note OFF, ch=");
       Serial.print(channel, DEC);
@@ -61,7 +62,7 @@ void processMIDIData(){
       Serial.println(velocity, DEC);
       break;
 
-    case usbMIDI.noteOFF:
+    case usbMIDI.NoteOff:
       terminateAudioHat();
       Serial.print("Note OFF, ch=");
       Serial.print(channel, DEC);
@@ -78,7 +79,7 @@ void processMIDIData(){
 */
 void playAudioHat() {
   // FILLER STUB FOR NOW, just to check if it reaches here
-  Serial.println("Congrats! You played a note!")
+  Serial.println("Congrats! You played a note!");
 }
 
 /**
@@ -86,6 +87,6 @@ void playAudioHat() {
 */
 void terminateAudioHat() {
   // FILLER STUB FOR NOW, just to check if it reaches here
-  Serial.println("Note stopped! Play the next!")
+  Serial.println("Note stopped! Play the next!");
 }
 
