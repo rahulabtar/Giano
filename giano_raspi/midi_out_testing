@@ -3,20 +3,11 @@ import mido
 print(mido.get_output_names())
 print(mido.get_input_names())
 
-with mido.open_output() as out_:
-	with mido.open_input() as in_:
-		print("out:")
-		print(out_)
-		print("in:")
-		print(in_)
+out = mido.open_output('Teensy MIDI:Teensy MIDI MIDI 1 24:0')
 
-		msg = mido.Message('note_on', note= 60) # test note
-		out_.send(msg)
-		print("MESSAGE SENT YAY")
 
-		for msg in in_.iter_pending():
-			if msg:
-				print("O YA MESSAGE RECEIEVED")
-				print(msg)
-				break 
-			else: print("msg not sent sky probably made a typo")
+# new Send NOTE ON TEST
+
+msg_on = mido.Message('note_on', note=60, velocity=100, channel=0)
+out.send(msg_on)
+print("SEND NOTE ON COMPLETE")
