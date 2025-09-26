@@ -57,7 +57,7 @@ class ArucoMarkerSystem:
         marker_locations: List[Tuple[float, float]] = None,  # (x, y) offsets in inches from top-left
         marker_ids: List[int] = None,  # Custom marker IDs
         filename: str = "aruco_marker_sheet.png"
-    ) -> Tuple[str, int, int]:
+    ) -> str:
         """
         Create a sheet with markers at specified locations or corners.
         
@@ -72,7 +72,7 @@ class ArucoMarkerSystem:
             filename: Output filename
             
         Returns:
-            Tuple of (filename, cols, rows) where cols/rows indicate layout
+            filename: The name of the file the image was saved to
         """
         
         # Set default corner locations if none provided
@@ -103,7 +103,7 @@ class ArucoMarkerSystem:
             # Calculate effective DPI from input sheet and specified paper size
             effective_dpi_x = paper_width_px / paper_size_inches[0]
             effective_dpi_y = paper_height_px / paper_size_inches[1]
-            if paper_size_inches[0] / paper_size_inches[1] != paper_height_px / paper_width_px:
+            if paper_size_inches[0] / paper_size_inches[1] != paper_width_px / paper_height_px:
               raise ValueError("Width/height inches not equal to width/height px")
             
             print(f"Using existing sheet: {paper_width_px}x{paper_height_px} pixels")
@@ -175,13 +175,17 @@ class ArucoMarkerSystem:
                 print(f"   ✗ Marker {marker_id} doesn't fit at ({x_px}, {y_px}) - bounds exceeded")
         
         # Save sheet
-        cv.imwrite(filename, sheet)
-        print(f"✓ Marker sheet saved as {filename}")
+        save_dir = os.path.curdir+os.path.sep+"aruco_output"
+        if not os.path.isdir(save_dir):
+            os.mkdir(save_dir)
+        cv.imwrite(save_dir+os.path.sep+filename, sheet)
+
+        print(f"✓ Marker sheet saved as {save_dir+os.path.sep+filename}")
         print(f"✓ Successfully placed {placed_markers}/{len(marker_ids)} markers")
         print(f"✓ Print at {dpi} DPI for accurate {marker_size_inches}\" markers")
         
         # Calculate grid dimensions for return value (estimate based on marker spread)
-        return filename, 2, 2
+        return filename
        
     def detect_markers(self, image: np.ndarray) -> Tuple[List, List, List]:
         """
