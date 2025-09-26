@@ -8,6 +8,7 @@ from typing import Union
 
 PAGE_DPI = 300
 MARKER_SIZE = 1
+CORNER_OFFSET = 0.25
 
 def pdf_to_nparray(pdf_path:str, dpi:int = PAGE_DPI, is_grayscale:bool = True) -> Union[np.ndarray, list[np.ndarray]]:
   """ Converts pdf at path to np.ndarray 
@@ -40,20 +41,28 @@ def pdf_to_nparray(pdf_path:str, dpi:int = PAGE_DPI, is_grayscale:bool = True) -
 
 if __name__ == '__main__':
 
-
-  keys1_locations = [(0.25, 10.75 - MARKER_SIZE), (8.25 - MARKER_SIZE, 10.75 - MARKER_SIZE)]
+  keys1_locations = [(CORNER_OFFSET, 11 - CORNER_OFFSET - MARKER_SIZE), (8.5 - CORNER_OFFSET - MARKER_SIZE, 11 - CORNER_OFFSET - MARKER_SIZE)]
   keys1_ids = [10,11]
 
-  #TODO: fix keys2 marker locations
-  keys2_locations = [(8.5 - MARKER_SIZE - 0.25, 0.25), (8.5 - MARKER_SIZE - 0.25, 11 - MARKER_SIZE - 0.25)]
+  #keys 2 markers will be in the middle
+  keys2_locations = [(CORNER_OFFSET, 11/2 - MARKER_SIZE/2), (8.5 - CORNER_OFFSET - MARKER_SIZE, 11/2 - MARKER_SIZE/2)]
   keys2_ids = [12,13]
-  marker_adder = ArucoMarkerSystem()
 
+  # keys 3 for 4 octaves 
+  keys3_locations = [(CORNER_OFFSET, CORNER_OFFSET), (8.5 - CORNER_OFFSET - MARKER_SIZE, CORNER_OFFSET)]
+  keys3_ids = [14,15]
+
+  marker_adder = ArucoMarkerSystem()
+  
   keys1_path = os.path.curdir+os.path.sep+"aruco_input"+os.path.sep+"Keys1.pdf"
   keys2_path = os.path.curdir+os.path.sep+"aruco_input"+os.path.sep+"Keys2.pdf"
   
   keys1_array = pdf_to_nparray(keys1_path)
+  keys3_array = keys1_array.copy()
   keys2_array = pdf_to_nparray(keys2_path)
+
   
-  #TODO: Implement marker2 marker sheet
   marker_adder.create_marker_sheet(keys1_array, filename="Keys1withAruco.png", marker_locations=keys1_locations, marker_ids=keys1_ids)
+  marker_adder.create_marker_sheet(keys2_array, filename="Keys2withAruco.png", marker_locations=keys2_locations, marker_ids=keys2_ids)
+  marker_adder.create_marker_sheet(keys3_array, filename="Keys3withAruco.png", marker_locations=keys3_locations, marker_ids=keys3_ids)
+
