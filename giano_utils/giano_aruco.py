@@ -239,6 +239,58 @@ class ArucoMarkerSystem:
         
         return output_image
     
+    def get_marker_poses(self, image: np.ndarray, camera_matrix: np.ndarray, 
+                        dist_coeffs: np.ndarray, marker_size_meters: float = 0.05):
+        """
+        Get 3D pose of all detected markers.
+        
+        Returns:
+            List of poses as (rotation_vector, translation_vector) tuples
+        """
+        corners, ids, rejected = self.detect_markers(image)
+        
+        if ids is not None:
+            rvecs, tvecs = self.estimate_pose(corners, ids, camera_matrix, 
+                                                dist_coeffs, marker_size_meters)
+            
+            poses = []
+            for i, marker_id in enumerate(ids.flatten()):
+                # Convert rotation vector to rotation matrix
+                rotation_matrix, _ = cv.Rodrigues(rvecs[i])
+                
+                pose_info = {
+                    'id': marker_id,
+                    'rotation_vector': rvecs[i],
+                    'translation_vector': tvecs[i],
+                    'rotation_matrix': rotation_matrix,
+                    'position_xyz': tvecs[i].flatten(),  # [x, y, z] in meters
+                    'euler_angles': self.rotation_to_euler(rotation_matrix)
+                }
+                poses.append(pose_info)
+                
+            return poses
+        return []
+    
+    def rotation_to_euler(self, rotation_matrix):
+        """Convert rotation matrix to Euler angles (roll, pitch, yaw)."""
+        import math
+        
+        # Extract Euler angles from rotation matrix
+        sy = math.sqrt(rotation_matrix[0,0] * rotation_matrix[0,0] + 
+                       rotation_matrix[1,0] * rotation_matrix[1,0])
+        
+        singular = sy < 1e-6
+        
+        if not singular:
+            x = math.atan2(rotation_matrix[2,1], rotation_matrix[2,2])
+            y = math.atan2(-rotation_matrix[2,0], sy)
+            z = math.atan2(rotation_matrix[1,0], rotation_matrix[0,0])
+        else:
+            x = math.atan2(-rotation_matrix[1,2], rotation_matrix[1,1])
+            y = math.atan2(-rotation_matrix[2,0], sy)
+            z = 0
+        
+        return np.array([x, y, z])  # Roll, Pitch, Yaw in radians
     def estimate_pose(self, corners: List, ids: List, camera_matrix: np.ndarray, 
                      dist_coeffs: np.ndarray, marker_length: float) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
         """
@@ -254,6 +306,7 @@ class ArucoMarkerSystem:
         Returns:
             Tuple of (rotation_vectors, translation_vectors)
         """
+        
         if ids is not None and len(ids) > 0:
             rvecs, tvecs, _ = cv.aruco.estimatePoseSingleMarkers(
                 corners, marker_length, camera_matrix, dist_coeffs
