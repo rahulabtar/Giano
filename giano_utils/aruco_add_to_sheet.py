@@ -55,4 +55,5 @@ if __name__ == '__main__':
   keys1_array = pdf_to_nparray(keys1_path)
   keys2_array = pdf_to_nparray(keys2_path)
   
+  #TODO: Implement marker2 marker sheet
   marker_adder.create_marker_sheet(keys1_array, filename="Keys1withAruco.png", marker_locations=keys1_locations, marker_ids=keys1_ids)
