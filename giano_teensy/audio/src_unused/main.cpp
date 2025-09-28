@@ -73,6 +73,5 @@ void loop() {
   // Check for incoming MIDI messages
   // This will trigger the callbacks when MIDI data is received
   usbMIDI.read();
-  
 }
 

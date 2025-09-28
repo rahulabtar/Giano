@@ -26,7 +26,7 @@ void setup() {
 */
 void loop() {
   if(usbMIDI.read()) {
-    Serial.print("NOTE RECEIVED: PROCESSING NOW")
+    Serial.print("NOTE RECEIVED: PROCESSING NOW");
     processMIDIData();
   }
 }
