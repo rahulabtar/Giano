@@ -240,7 +240,7 @@ class ArucoMarkerSystem:
         return output_image
     
     def get_marker_poses(self, image: np.ndarray, camera_matrix: np.ndarray, 
-                        dist_coeffs: np.ndarray, marker_size_meters: float = 0.05):
+                        dist_coeffs: np.ndarray, marker_size_meters: float = 0.05) -> list[dict]:
         """
         Get 3D pose of all detected markers.
         
@@ -260,8 +260,8 @@ class ArucoMarkerSystem:
                 
                 pose_info = {
                     'id': marker_id,
-                    'rotation_vector': rvecs[i],
-                    'translation_vector': tvecs[i],
+                    'rvec': rvecs[i],
+                    'tvec': tvecs[i],
                     'rotation_matrix': rotation_matrix,
                     'position_xyz': tvecs[i].flatten(),  # [x, y, z] in meters
                     'euler_angles': self.rotation_to_euler(rotation_matrix)
@@ -291,10 +291,10 @@ class ArucoMarkerSystem:
             z = 0
         
         return np.array([x, y, z])  # Roll, Pitch, Yaw in radians
-    def estimate_pose(self, corners: List, ids: List, camera_matrix: np.ndarray, 
+    def estimate_pose_vecs(self, corners: List, ids: List, camera_matrix: np.ndarray, 
                      dist_coeffs: np.ndarray, marker_length: float) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
         """
-        Estimate pose of detected markers.
+        Estimate pose of detected markers. Returns rotation and translation vectors
         
         Args:
             corners: Detected marker corners

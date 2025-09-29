@@ -21,10 +21,13 @@ if UTILS_DIR not in sys.path:
 # Import ArUco system from giano_utils
 try:
     from giano_aruco import ArucoMarkerSystem
+    from aruco_add_to_sheet import MARKER_SIZE
 except ImportError:
     print(f"Could not import from {UTILS_DIR}")
     raise
+
 PI = 3.1415926
+IN_TO_METERS = 0.0254
 
 options = HandLandmarkerOptions(
     base_options=BaseOptions(model_asset_path='hand_landmarker.task', delegate='GPU'),
@@ -94,12 +97,30 @@ class HandTracker():
 
 def main():
     # Choose which camera to use. Default for computer onboard webcam is 0
-    cap = cv.VideoCapture(1)
+    # available_cams = test_available_cams(2)
+
+    # Choose the second one because that SHOULD be the webcam on laptop
+    cap = cv.VideoCapture(0)
+    
     tracker = HandTracker()
     aruco_sys = ArucoMarkerSystem()
+
+    # attempt to open the calibration file
+    try:
+        calib_npz = np.load("camera_calibration.npz")
+        
+    except(OSError): 
+        print("Calibration file not found!")
+    except:
+        print("Issue with reading calibration file")
+    
+    camera_matrix = calib_npz["camera_matrix"]
+    dist_coeffs = calib_npz["dist_coeffs"]
+
     
     # FPS monitor setup
     prev_time = 0
+    i = 0
     while True:
         success, image = cap.read()
         if not success:
@@ -108,8 +129,16 @@ def main():
         h, w, c = image.shape
         
         # find aruco markers
-        corners, ids, rejected = aruco_sys.get_marker_poses(image)
-        image = aruco_sys.draw_detected_markers(image, corners, ids)
+        poses = aruco_sys.get_marker_poses(image, camera_matrix, dist_coeffs, marker_size_meters=MARKER_SIZE*IN_TO_METERS)
+        aruco_sys.detect_markers(image)
+        for pose in poses:
+            image = cv.drawFrameAxes(image, camera_matrix, dist_coeffs, pose['rvec'], pose['tvec'], 0.1, 10)
+        
+        i+=1
+        if i >= 30:
+            for j, pose in enumerate(poses): 
+                print(f"Pose {j}: {pose}")
+            i=0
 
         # find hands, return drawn image
         # HAND FINDER PART
@@ -144,5 +173,25 @@ def main():
     cap.release()
     cv.destroyAllWindows()
     
+def test_available_cams(num_cams: int) -> list:
+    """Test available cameras.
+    
+    Args:
+        num_cams: the number of camera indices to test. Fewer will be faster.    
+    """
+    available_cams = []
+    for i in range(num_cams):
+        test_cap = cv.VideoCapture(i)
+        if test_cap.isOpened():
+            ret, frame = test_cap.read()
+            if ret and frame is not None:
+                h, w = frame.shape[:2]
+                print(f"Camera {i}: {w}x{h} resolution")
+                available_cams.append(i)
+            test_cap.release()
+        else:
+            print(f"Camera {i} not available")
+    return available_cams
+
 if __name__ == "__main__":
     main()

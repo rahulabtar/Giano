@@ -2,6 +2,9 @@
 .venv/
 */.venv
 
+# Calibration data
+calibration_images
+
 # Python cache
 __pycache__/
 *.py[cod]
