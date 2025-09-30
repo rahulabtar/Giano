@@ -9,6 +9,7 @@ from typing import Union
 PAGE_DPI = 300
 MARKER_SIZE = 1
 CORNER_OFFSET = 0.25
+MARKER_IDS = [10,11,12,13,14,15]
 
 def pdf_to_nparray(pdf_path:str, dpi:int = PAGE_DPI, is_grayscale:bool = True) -> Union[np.ndarray, list[np.ndarray]]:
   """ Converts pdf at path to np.ndarray 
@@ -42,15 +43,15 @@ def pdf_to_nparray(pdf_path:str, dpi:int = PAGE_DPI, is_grayscale:bool = True) -
 if __name__ == '__main__':
 
   keys1_locations = [(CORNER_OFFSET, 11 - CORNER_OFFSET - MARKER_SIZE), (8.5 - CORNER_OFFSET - MARKER_SIZE, 11 - CORNER_OFFSET - MARKER_SIZE)]
-  keys1_ids = [10,11]
+  keys1_ids = MARKER_IDS[0:2]
 
   #keys 2 markers will be in the middle
   keys2_locations = [(CORNER_OFFSET, 11/2 - MARKER_SIZE/2), (8.5 - CORNER_OFFSET - MARKER_SIZE, 11/2 - MARKER_SIZE/2)]
-  keys2_ids = [12,13]
+  keys2_ids = MARKER_IDS[2:4]
 
   # keys 3 for 4 octaves 
   keys3_locations = [(CORNER_OFFSET, CORNER_OFFSET), (8.5 - CORNER_OFFSET - MARKER_SIZE, CORNER_OFFSET)]
-  keys3_ids = [14,15]
+  keys3_ids = MARKER_IDS[4:]
 
   marker_adder = ArucoMarkerSystem()
   

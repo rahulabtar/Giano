@@ -21,7 +21,7 @@ if UTILS_DIR not in sys.path:
 # Import ArUco system from giano_utils
 try:
     from giano_aruco import ArucoMarkerSystem
-    from aruco_add_to_sheet import MARKER_SIZE
+    from aruco_add_to_sheet import MARKER_SIZE, MARKER_IDS
 except ImportError:
     print(f"Could not import from {UTILS_DIR}")
     raise
@@ -121,6 +121,7 @@ def main():
     # FPS monitor setup
     prev_time = 0
     i = 0
+    poses_list = []
     while True:
         success, image = cap.read()
         if not success:
@@ -130,7 +131,8 @@ def main():
         
         # find aruco markers
         poses = aruco_sys.get_marker_poses(image, camera_matrix, dist_coeffs, marker_size_meters=MARKER_SIZE*IN_TO_METERS)
-        aruco_sys.detect_markers(image)
+        poses_list.append(poses)
+        aruco_sys.get_marker_polygon(MARKER_IDS, image, camera_matrix, dist_coeffs, MARKER_SIZE*IN_TO_METERS)
         for pose in poses:
             image = cv.drawFrameAxes(image, camera_matrix, dist_coeffs, pose['rvec'], pose['tvec'], 0.1, 10)
         
@@ -142,9 +144,11 @@ def main():
 
         # find hands, return drawn image
         # HAND FINDER PART
-        # image = tracker.hands_finder(image)
-        # lm_list, absolute_pos = tracker.position_finder(image, hand_no = 0, draw=False)
-        # print(lm_list)
+        image = tracker.hands_finder(image)
+        lm_list, absolute_pos = tracker.position_finder(image, hand_no = 0, draw=False)
+        for landmark in lm_list:
+            lm_id, x_px, y_px = landmark[0], landmark[1], landmark[2]
+
 
        
 
@@ -192,6 +196,8 @@ def test_available_cams(num_cams: int) -> list:
         else:
             print(f"Camera {i} not available")
     return available_cams
+
+
 
 if __name__ == "__main__":
     main()

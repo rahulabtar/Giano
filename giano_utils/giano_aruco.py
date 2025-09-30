@@ -2,6 +2,7 @@ import cv2 as cv
 import numpy as np
 import os
 from typing import List, Tuple, Optional
+import math
 from enum import Enum
 
 PaperSizes = {"LETTER": (8.5,11.0), }
@@ -9,7 +10,7 @@ PaperSizes = {"LETTER": (8.5,11.0), }
 class ArucoMarkerSystem:
     """A comprehensive system for generating and detecting ArUco markers."""
     
-    def __init__(self, dictionary_type=cv.aruco.DICT_6X6_250):
+    def __init__(self, dictionary_type=cv.aruco.DICT_6X6_250, marker_ids:list=None):
         """
         Initialize the ArUco marker system.
         
@@ -19,6 +20,7 @@ class ArucoMarkerSystem:
         self.dictionary = cv.aruco.getPredefinedDictionary(dictionary_type)
         self.detector_params = cv.aruco.DetectorParameters()
         self.detector = cv.aruco.ArucoDetector(self.dictionary, self.detector_params)
+        self.marker_ids = marker_ids
     
     def generate_marker(self, marker_id: int, size: int = 200) -> np.ndarray:
         """
@@ -240,7 +242,7 @@ class ArucoMarkerSystem:
         return output_image
     
     def get_marker_poses(self, image: np.ndarray, camera_matrix: np.ndarray, 
-                        dist_coeffs: np.ndarray, marker_size_meters: float = 0.05) -> list[dict]:
+                        dist_coeffs: np.ndarray, marker_size_meters: float = 0.05, last_poses: Optional[list[dict]]=None) -> list[dict]:
         """
         Get 3D pose of all detected markers.
         
@@ -250,7 +252,7 @@ class ArucoMarkerSystem:
         corners, ids, rejected = self.detect_markers(image)
         
         if ids is not None:
-            rvecs, tvecs = self.estimate_pose(corners, ids, camera_matrix, 
+            rvecs, tvecs = self.estimate_pose_vecs(corners, ids, camera_matrix, 
                                                 dist_coeffs, marker_size_meters)
             
             poses = []
@@ -266,11 +268,58 @@ class ArucoMarkerSystem:
                     'position_xyz': tvecs[i].flatten(),  # [x, y, z] in meters
                     'euler_angles': self.rotation_to_euler(rotation_matrix)
                 }
+                if last_poses is not None:
+                    for prev_pose in last_poses:
+                        if prev_pose['id'] == marker_id:
+                            self.calculate_pose_similarity(pose_info, prev_pose)
+
+                            
                 poses.append(pose_info)
                 
             return poses
         return []
     
+    def calculate_pose_similarity(self, current_pose: dict, previous_pose: dict) -> dict:
+        """
+        Calculate similarity metrics between current and previous pose.
+        
+        Args:
+            current_pose: Current marker pose dictionary
+            previous_pose: Previous marker pose dictionary
+            
+        Returns:
+            Dictionary with similarity metrics
+        """
+        # Position difference (Euclidean distance)
+        pos_diff = np.linalg.norm(
+            current_pose['position_xyz'] - previous_pose['position_xyz']
+        )
+        
+        # Rotation difference (angle between rotation vectors)
+        rvec_diff = np.linalg.norm(
+            current_pose['rvec'] - previous_pose['rvec']
+        )
+        
+        # Euler angle differences
+        euler_diff = np.abs(
+            current_pose['euler_angles'] - previous_pose['euler_angles']
+        )
+        
+        # Handle angle wrapping (e.g., -π to π transitions)
+        for i in range(len(euler_diff)):
+            if euler_diff[i] > math.pi:
+                euler_diff[i] = 2 * math.pi - euler_diff[i]
+        
+        euler_total_diff = np.sum(euler_diff)
+        
+        return {
+            'position_distance': pos_diff,
+            'rotation_distance': rvec_diff,
+            'euler_total_diff': euler_total_diff,
+            'euler_individual_diff': euler_diff,
+            'is_similar': pos_diff < 0.05 and rvec_diff < 0.3  # Configurable thresholds
+        }
+
     def rotation_to_euler(self, rotation_matrix):
         """Convert rotation matrix to Euler angles (roll, pitch, yaw)."""
         import math
@@ -291,6 +340,7 @@ class ArucoMarkerSystem:
             z = 0
         
         return np.array([x, y, z])  # Roll, Pitch, Yaw in radians
+    
     def estimate_pose_vecs(self, corners: List, ids: List, camera_matrix: np.ndarray, 
                      dist_coeffs: np.ndarray, marker_length: float) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
         """
@@ -340,134 +390,52 @@ class ArucoMarkerSystem:
         
         return output_image
 
+    def get_marker_polygon(self, ordered_ids, image: np.ndarray, camera_matrix: np.ndarray, dist_coeffs: np.ndarray, marker_size_meters: float = 0.05):
+        """ Get the polygon created by the AruCo markers with the given ids"""
+        poses = self.get_marker_poses(image, camera_matrix, dist_coeffs, marker_size_meters)
+        #
+        if len(poses) < 4:
+            print('fewer than 4 markers found! Returning blank')
+            return [0,0,0,0]
 
-class ArucoDemo:
-    """Demo class for ArUco marker detection using webcam."""
-    
-    def __init__(self):
-        self.aruco_system = ArucoMarkerSystem()
-        self.cap = None
-    
-    def run_webcam_detection(self, camera_index: int = 0):
-        """
-        Run real-time ArUco marker detection using webcam.
+        found_markers = []
+        # match found markers with user provided IDs
+        for pose in poses:
+            if pose['id'] in ordered_ids:
+                position = pose['tvec'].flatten()
+                found_markers.append((position[0],position[1],pose))
         
-        Args:
-            camera_index: Camera index (usually 0 for default camera)
-        """
-        self.cap = cv.VideoCapture(camera_index)
         
-        if not self.cap.isOpened():
-            print("Error: Could not open camera")
-            return
+        # Sort by y (top to bottom), then by x (left to right)
+        found_markers.sort(key=lambda p: (p[1], p[0]))
         
-        print("Starting ArUco marker detection...")
-        print("Press 'q' to quit, 's' to save current frame")
+        # Top two markers (lowest y values)
+        top_markers = found_markers[:2]
+        bottom_markers = found_markers[2:]
         
-        frame_count = 0
-        
-        while True:
-            ret, frame = self.cap.read()
-            if not ret:
-                print("Error: Could not read frame")
-                break
-            
-            # Detect markers
-            corners, ids, rejected = self.aruco_system.detect_markers(frame)
-            
-            # Draw detected markers
-            output_frame = self.aruco_system.draw_detected_markers(frame, corners, ids)
-            
-            # Display detection info
-            if ids is not None:
-                cv.putText(output_frame, f"Detected: {len(ids)} markers", 
-                          (10, 30), cv.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-            else:
-                cv.putText(output_frame, "No markers detected", 
-                          (10, 30), cv.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-            
-            # Display frame
-            cv.imshow('ArUco Marker Detection', output_frame)
-            
-            # Handle key presses
-            key = cv.waitKey(1) & 0xFF
-            if key == ord('q'):
-                break
-            elif key == ord('s'):
-                filename = f"aruco_detection_{frame_count}.jpg"
-                cv.imwrite(filename, output_frame)
-                print(f"Frame saved as {filename}")
-                frame_count += 1
-        
-        self.cleanup()
-    
-    def cleanup(self):
-        """Clean up resources."""
-        if self.cap:
-            self.cap.release()
-        cv.destroyAllWindows()
+        # Sort top markers by x (left to right)
+        top_markers.sort(key=lambda p: p[0])
+        # Sort bottom markers by x (right to left for clockwise order)
+        bottom_markers.sort(key=lambda p: -p[0])
 
+        ordered = [
+        top_markers[0][2],    # top-left
+        top_markers[1][2],    # top-right  
+        bottom_markers[0][2], # bottom-right
+        bottom_markers[1][2]  # bottom-left
+        ]
 
-def main():
-    """Main function demonstrating ArUco marker generation and detection."""
-    
-    # Initialize ArUco system
-    aruco_system = ArucoMarkerSystem()
-    
-    print("ArUco Marker System Demo")
-    print("1. Generate markers")
-    print("2. Start webcam detection")
-    print("3. Process image file")
-    
-    choice = input("Enter your choice (1-3): ").strip()
-    
-    if choice == "1":
-        # Generate some sample markers
-        marker_ids = [0, 1, 2, 3, 4, 5, 10, 15, 20, 25]
-        print(f"Generating markers with IDs: {marker_ids}")
-        aruco_system.generate_multiple_markers(marker_ids, "generated_markers", 300)
-        print("Markers generated successfully!")
-        
-        # Also create a single large marker for testing
-        aruco_system.save_marker(42, "test_marker_42.png", 500)
-        
-    elif choice == "2":
-        # Start webcam detection
-        demo = ArucoDemo()
-        demo.run_webcam_detection()
-        
-    elif choice == "3":
-        # Process image file
-        image_path = input("Enter image file path: ").strip()
-        if os.path.exists(image_path):
-            image = cv.imread(image_path)
-            if image is not None:
-                corners, ids, rejected = aruco_system.detect_markers(image)
-                result_image = aruco_system.draw_detected_markers(image, corners, ids)
-                
-                # Display results
-                if ids is not None:
-                    print(f"Detected {len(ids)} markers with IDs: {ids.flatten()}")
-                else:
-                    print("No markers detected in the image")
-                
-                # Show image
-                cv.imshow('ArUco Detection Result', result_image)
-                cv.waitKey(0)
-                cv.destroyAllWindows()
-                
-                # Save result
-                output_path = f"detected_{os.path.basename(image_path)}"
-                cv.imwrite(output_path, result_image)
-                print(f"Result saved as {output_path}")
-            else:
-                print("Error: Could not load image")
-        else:
-            print("Error: Image file not found")
-    
-    else:
-        print("Invalid choice")
+        marker_centers_2d = []
+        for marker in ordered:
+            # Project 3D marker center (0,0,0 in marker coords) to 2D
+            center_3d = np.array([[0, 0, 0]], dtype=np.float32)
+            center_2d, _ = cv.projectPoints(
+                center_3d, marker['rvec'], marker['tvec'], 
+                camera_matrix, dist_coeffs
+            )
+            
+            center_2d = center_2d.reshape(-1, 2)[0]
+            marker_centers_2d.append(center_2d)
 
-
-if __name__ == "__main__":
-    main()
+        
+        
