@@ -1,0 +1,5 @@
+z_axis vector, pointing down:
+array([-0.31706498,  0.6871469 , -0.65368107])
+
+pointing up: 
+array([-0.0235706 , -0.70629384, -0.70752628])

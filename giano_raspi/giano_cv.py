@@ -20,7 +20,7 @@ if UTILS_DIR not in sys.path:
 
 # Import ArUco system from giano_utils
 try:
-    from giano_aruco import ArucoMarkerSystem
+    from aruco_pose_tracker import ArucoPoseTracker
     from aruco_add_to_sheet import MARKER_SIZE, MARKER_IDS
 except ImportError:
     print(f"Could not import from {UTILS_DIR}")
@@ -104,8 +104,18 @@ def main():
     
     tracker = HandTracker()
     aruco_sys = ArucoMarkerSystem()
+    
+    # Configure pose filtering - you can experiment with these settings
+    aruco_sys.configure_pose_filtering(
+        enable_filtering=False,         # Enable similarity filtering
+        adaptive_thresholds=False,      # Use adaptive thresholds  
+        debug_output=True,              # Set to True to see filtering decisions
+        enforce_z_axis_out=False,       # Force Z-axis to always point toward camera
+        enable_moving_average=True,     # Enable TRUE LTI moving average filter
+        filter_window_size=5            # Number of samples to average (higher = smoother)
+    )
 
-    # attempt to open the calibration file
+    # attempt to open the calibration file as a z
     try:
         calib_npz = np.load("camera_calibration.npz")
         
@@ -130,16 +140,24 @@ def main():
         h, w, c = image.shape
         
         # find aruco markers
-        poses = aruco_sys.get_marker_poses(image, camera_matrix, dist_coeffs, marker_size_meters=MARKER_SIZE*IN_TO_METERS)
+        if len(poses_list) > 0:
+            last_poses = poses_list.pop()
+        else: last_poses = None
+        poses = aruco_sys.get_marker_poses(image, 
+                camera_matrix,
+                dist_coeffs,
+                marker_size_meters=MARKER_SIZE*IN_TO_METERS, 
+                last_poses=last_poses)
         poses_list.append(poses)
-        aruco_sys.get_marker_polygon(MARKER_IDS, image, camera_matrix, dist_coeffs, MARKER_SIZE*IN_TO_METERS)
+        # aruco_sys.get_marker_polygon(MARKER_IDS, image, camera_matrix, dist_coeffs, MARKER_SIZE*IN_TO_METERS)
         for pose in poses:
             image = cv.drawFrameAxes(image, camera_matrix, dist_coeffs, pose['rvec'], pose['tvec'], 0.1, 10)
         
         i+=1
         if i >= 30:
             for j, pose in enumerate(poses): 
-                print(f"Pose {j}: {pose}")
+                #print(f"Pose {j}: {pose}")
+                pass
             i=0
 
         # find hands, return drawn image
