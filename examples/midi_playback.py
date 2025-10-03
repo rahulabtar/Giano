@@ -1,10 +1,10 @@
 import os 
-from MusicDecoder import MusicDecoder, SortType
+from src.audio.midi_decoder import MusicDecoder, SortType
 
 #grabs the file path from the path to this repo on your computer
 file = "Baby_Shark__Nursery_Rhyme_Easy_Piano.mxl"
 script_dir = os.path.dirname(os.path.abspath(__file__))
-file_path = os.path.join(script_dir, "MXLFiles", file)
+file_path = os.path.join(script_dir,"..","assets","mxl_files", file)
 
 #creates a music decoder object
 md = MusicDecoder(file_path, SortType.VOICE)

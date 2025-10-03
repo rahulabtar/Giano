@@ -3,7 +3,6 @@ import numpy as np
 import os
 from typing import List, Tuple, Optional
 
-PaperSizes = {"LETTER": (8.5, 11.0)}
 
 
 class ArucoMarkerGenerator:

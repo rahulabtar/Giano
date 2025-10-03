@@ -1,0 +1,4 @@
+# ArUco marker processing dependencies
+-r base.txt
+opencv-python>=4.11.0.86
+pdf2image==1.17.0
