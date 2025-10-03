@@ -1,3 +1,8 @@
+# Add project root to Python path for direct execution
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
 import cv2 as cv
 import mediapipe as mp
 BaseOptions = mp.tasks.BaseOptions
@@ -8,27 +13,23 @@ VisionRunningMode = mp.tasks.vision.RunningMode
 
 import numpy as np
 import time as time
-import os
 import math
 import matplotlib.pyplot as plt
-import sys
 
 
-# Import ArUco system from
+# Import ArUco system from the pose_tracker module
 try:
     from src.computer_vision.aruco_pose_tracker import ArucoPoseTracker
     from src.computer_vision.hand_tracking import HandTracker 
-    from core.constants import MARKER_SIZE, MARKER_IDS
+    from src.core.constants import MARKER_SIZE, MARKER_IDS, HAND_MODEL_PATH, CAMERA_CALIBRATION_PATH, IN_TO_METERS, PI
 
 except ImportError:
     print(f"Could not import user stuff")
     raise
 
-PI = 3.1415926
-IN_TO_METERS = 0.0254
 
 options = HandLandmarkerOptions(
-    base_options=BaseOptions(model_asset_path='hand_landmarker.task', delegate='GPU'),
+    base_options=BaseOptions(model_asset_path=HAND_MODEL_PATH, delegate='GPU'),
 )
 
 
@@ -54,7 +55,7 @@ def main():
 
     # attempt to open the calibration file as a z
     try:
-        calib_npz = np.load("camera_calibration.npz")
+        calib_npz = np.load(CAMERA_CALIBRATION_PATH)
         
     except(OSError): 
         print("Calibration file not found!")

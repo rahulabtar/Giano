@@ -2,6 +2,8 @@
 Core constants used throughout the Giano system.
 """
 
+import os
+
 # Physical constants
 PI = 3.1415926
 IN_TO_METERS = 0.0254
@@ -26,8 +28,11 @@ VELOCITY_SCALE = 127
 SERIAL_BAUD_RATE = 115200
 DEFAULT_CAMERA_ID = 0
 
-# File paths (relative to project root)
-HAND_MODEL_PATH = "assets/models/hand_landmarker.task"
-CAMERA_CALIBRATION_PATH = "assets/calibration/camera_calibration.npz"
-CONFIG_DIR = "config"
-ASSETS_DIR = "assets"
+# Get the project root directory (two levels up from this file)
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# File paths (absolute paths from project root)
+HAND_MODEL_PATH = os.path.join(PROJECT_ROOT, "assets", "models", "hand_landmarker.task")
+CAMERA_CALIBRATION_PATH = os.path.join(PROJECT_ROOT, "assets", "calibration", "camera_calibration.npz")
+CONFIG_DIR = os.path.join(PROJECT_ROOT, "config")
+ASSETS_DIR = os.path.join(PROJECT_ROOT, "assets")

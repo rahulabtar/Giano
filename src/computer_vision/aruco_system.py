@@ -23,6 +23,7 @@ PaperSizes = {"LETTER": (8.5, 11.0)}
 
 class ArucoMarkerSystem:
     """
+    DEPRECATED AND LEGACY
     Comprehensive ArUco marker system that combines generation and pose tracking.
     
     This class maintains backward compatibility while using the new modular architecture.

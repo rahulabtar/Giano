@@ -114,7 +114,7 @@ class ArucoPoseTracker:
         return output_image
     
     def estimate_pose_vecs(self, corners: List, ids: List, camera_matrix: np.ndarray, 
-                     dist_coeffs: np.ndarray, marker_length: float) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
+                     dist_coeffs: np.ndarray, marker_size_meters: float) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
         """
         Estimate pose of detected markers. Returns rotation and translation vectors
         
@@ -123,18 +123,39 @@ class ArucoPoseTracker:
             ids: Detected marker IDs
             camera_matrix: Camera intrinsic matrix
             dist_coeffs: Camera distortion coefficients
-            marker_length: Real marker length in meters
+            marker_size_meters: Real marker length in meters
             
         Returns:
             Tuple of (rotation_vectors, translation_vectors)
         """
+        if len(corners) == 0:
+            return [], []
         
-        if ids is not None and len(ids) > 0:
-            rvecs, tvecs, _ = cv.aruco.estimatePoseSingleMarkers(
-                corners, marker_length, camera_matrix, dist_coeffs
+        rvecs = []
+        tvecs = []
+
+        for corner in corners:
+            # Create object points for a single marker (3D coordinates)
+            obj_points = np.array([
+                [-marker_size_meters/2, marker_size_meters/2, 0],
+                [marker_size_meters/2, marker_size_meters/2, 0], 
+                [marker_size_meters/2, -marker_size_meters/2, 0],
+                [-marker_size_meters/2, -marker_size_meters/2, 0]
+            ], dtype=np.float32)
+            
+            # Use solvePnP instead of the deprecated function
+            success, rvec, tvec = cv.solvePnP(
+                obj_points, 
+                corner[0],  # corner is a list, we want the first (and only) element
+                camera_matrix, 
+                dist_coeffs
             )
-            return rvecs, tvecs
-        return None, None
+            
+            if success:
+                rvecs.append(rvec)
+                tvecs.append(tvec)
+    
+        return rvecs, tvecs
     
     def draw_axes(self, image: np.ndarray, camera_matrix: np.ndarray, 
                   dist_coeffs: np.ndarray, rvecs: np.ndarray, tvecs: np.ndarray, 
@@ -242,8 +263,14 @@ class ArucoPoseTracker:
         n_samples = len(history)
         
         if n_samples == 1:
-            # No filtering needed for first sample
-            return pose_info
+            # No filtering needed for first sample, but add metadata for consistency
+            single_sample_pose = pose_info.copy()
+            single_sample_pose.update({
+                'filtered_samples': 1,
+                'is_filtered': False,
+                'is_true_lti': False
+            })
+            return single_sample_pose
         
         # LTI Moving Average Filter (Linear operations only)
         # Translation: Simple arithmetic mean (perfectly linear)

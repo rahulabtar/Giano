@@ -1,7 +1,7 @@
 # Computer vision specific dependencies
 -r base.txt
 opencv-contrib-python==4.11.0.86
-mediapipe==0.10.21
+mediapipe>=0.10.18
 matplotlib==3.10.5
 scipy==1.16.1
 absl-py==2.3.1
