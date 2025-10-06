@@ -49,7 +49,7 @@ def main():
         adaptive_thresholds=False,      # Use adaptive thresholds  
         debug_output=True,              # Set to True to see filtering decisions
         enforce_z_axis_out=False,       # Force Z-axis to always point toward camera
-        enable_moving_average=True,     # Enable TRUE LTI moving average filter
+        enable_moving_average=False,     # Enable TRUE LTI moving average filter
         filter_window_size=5            # Number of samples to average (higher = smoother)
     )
 
