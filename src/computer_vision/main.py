@@ -20,6 +20,7 @@ import matplotlib.pyplot as plt
 # Import ArUco system from the pose_tracker module
 try:
     from src.computer_vision.aruco_pose_tracker import ArucoPoseTracker
+    from src.computer_vision.aruco_polygon_detector import ArucoPolygonDetector
     from src.computer_vision.hand_tracking import HandTracker 
     from src.core.constants import MARKER_SIZE, MARKER_IDS, HAND_MODEL_PATH, CAMERA_CALIBRATION_PATH, IN_TO_METERS, PI
 
@@ -29,7 +30,8 @@ except ImportError:
 
 
 options = HandLandmarkerOptions(
-    base_options=BaseOptions(model_asset_path=HAND_MODEL_PATH, delegate='GPU'),
+    base_options=BaseOptions(model_asset_path=HAND_MODEL_PATH, delegate='GPU'), 
+    running_mode='LIVE_STREAM'
 )
 
 
@@ -38,22 +40,7 @@ def main():
     # available_cams = test_available_cams(2)
 
     # Choose the second one because that SHOULD be the webcam on laptop
-    cap = cv.VideoCapture(0)
-    
-    tracker = HandTracker()
-    aruco_sys = ArucoPoseTracker()
-    
-    # Configure pose filtering - you can experiment with these settings
-    aruco_sys.configure_pose_filtering(
-        enable_filtering=False,         # Enable similarity filtering
-        adaptive_thresholds=False,      # Use adaptive thresholds  
-        debug_output=True,              # Set to True to see filtering decisions
-        enforce_z_axis_out=False,       # Force Z-axis to always point toward camera
-        enable_moving_average=False,     # Enable TRUE LTI moving average filter
-        filter_window_size=5            # Number of samples to average (higher = smoother)
-    )
-
-    # attempt to open the calibration file as a z
+     # attempt to open the calibration file as a z
     try:
         calib_npz = np.load(CAMERA_CALIBRATION_PATH)
         
@@ -64,6 +51,24 @@ def main():
     
     camera_matrix = calib_npz["camera_matrix"]
     dist_coeffs = calib_npz["dist_coeffs"]
+
+    cap = cv.VideoCapture(0)
+    
+    tracker = HandTracker()
+    aruco_sys = ArucoPoseTracker()
+    aruco_polygon = ArucoPolygonDetector(camera_matrix, dist_coeffs)
+    
+    # Configure pose filtering - you can experiment with these settings
+    aruco_sys.configure_pose_filtering(
+        enable_filtering=False,         # Enable similarity filtering
+        adaptive_thresholds=False,      # Use adaptive thresholds  
+        debug_output=False,              # Set to True to see filtering decisions
+        enforce_z_axis_out=False,       # Force Z-axis to always point toward camera
+        enable_moving_average=True,     # Enable TRUE LTI moving average filter
+        filter_window_size=20            # Number of samples to average (higher = smoother)
+    )
+
+   
 
     
     # FPS monitor setup
@@ -77,7 +82,7 @@ def main():
             break
         h, w, c = image.shape
         
-        # find aruco markers
+        # find aruco markersm =
         if len(poses_list) > 0:
             last_poses = poses_list.pop()
         else: last_poses = None
@@ -87,10 +92,13 @@ def main():
                 marker_size_meters=MARKER_SIZE*IN_TO_METERS, 
                 last_poses=last_poses)
         poses_list.append(poses)
-        # aruco_sys.get_marker_polygon(MARKER_IDS, image, camera_matrix, dist_coeffs, MARKER_SIZE*IN_TO_METERS)
-        for pose in poses:
-            image = cv.drawFrameAxes(image, camera_matrix, dist_coeffs, pose['rvec'], pose['tvec'], 0.1, 10)
+        # for pose in poses:
+            # image = cv.drawFrameAxes(image, camera_matrix, dist_coeffs, pose['rvec'], pose['tvec'], 0.1, 10)
         
+        
+        # Aruco polygon
+        marker_centers_2d = aruco_polygon.get_marker_polygon(MARKER_IDS, poses, image, MARKER_SIZE)
+        image = aruco_polygon.draw_box(image, marker_centers_2d=marker_centers_2d)
         i+=1
         if i >= 30:
             for j, pose in enumerate(poses): 
@@ -104,6 +112,7 @@ def main():
         lm_list, absolute_pos = tracker.position_finder(image, hand_no = 0, draw=False)
         for landmark in lm_list:
             lm_id, x_px, y_px = landmark[0], landmark[1], landmark[2]
+        
 
 
        
