@@ -1,0 +1,33 @@
+{
+  "system": {
+    "debug_mode": false,
+    "log_level": "INFO",
+    "max_fps": 60
+  },
+  "modules": {
+    "computer_vision": {
+      "enabled": true,
+      "hand_detection_confidence": 0.5,
+      "hand_tracking_confidence": 0.5,
+      "max_hands": 2
+    },
+    "audio": {
+      "enabled": true,
+      "sample_rate": 44100,
+      "buffer_size": 512,
+      "synthesis_enabled": true
+    },
+    "hardware": {
+      "glove_controller": {
+        "enabled": true,
+        "serial_port": "auto",
+        "baud_rate": 115200
+      },
+      "audio_board": {
+        "enabled": true,
+        "serial_port": "auto", 
+        "baud_rate": 115200
+      }
+    }
+  }
+}

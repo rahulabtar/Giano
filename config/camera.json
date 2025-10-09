@@ -1,0 +1,13 @@
+{
+  "camera_id": 0,
+  "resolution": {
+    "width": 1920,
+    "height": 1080
+  },
+  "fps": 30,
+  "calibration_file": "assets/calibration/camera_calibration.npz",
+  "aruco_parameters": {
+    "marker_size": 0.02,
+    "dictionary": "DICT_6X6_250"
+  }
+}

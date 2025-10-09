@@ -1,0 +1,10 @@
+# Audio processing dependencies
+-r base.txt
+music21==9.7.1
+sounddevice==0.5.2
+matplotlib==3.10.6
+joblib==1.5.2
+jsonpickle==4.1.1
+more-itertools==10.8.0
+requests==2.32.5
+webcolors==24.11.1

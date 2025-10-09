@@ -1,0 +1,11 @@
+# Computer vision specific dependencies
+-r base.txt
+opencv-contrib-python==4.11.0.86
+mediapipe>=0.10.18
+matplotlib==3.10.5
+scipy==1.16.1
+absl-py==2.3.1
+flatbuffers==25.2.10
+ml_dtypes==0.5.3
+opt_einsum==3.4.0
+protobuf==4.25.8
