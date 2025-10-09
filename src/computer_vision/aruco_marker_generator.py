@@ -1,10 +1,9 @@
 import cv2 as cv
 import numpy as np
+import pdf2image
 import os
-from typing import List, Tuple, Optional
-
-PaperSizes = {"LETTER": (8.5, 11.0)}
-
+from typing import List, Tuple, Union
+from src.core.constants import PAGE_DPI, ASSETS_DIR
 
 class ArucoMarkerGenerator:
     """A system for generating ArUco markers and marker sheets."""
@@ -169,7 +168,7 @@ class ArucoMarkerGenerator:
                 print(f"   ✗ Marker {marker_id} doesn't fit at ({x_px}, {y_px}) - bounds exceeded")
         
         # Save sheet
-        save_dir = os.path.curdir + os.path.sep + "aruco_output"
+        save_dir = os.path.join(ASSETS_DIR, "aruco_output")
         if not os.path.isdir(save_dir):
             os.mkdir(save_dir)
         cv.imwrite(save_dir + os.path.sep + filename, sheet)
@@ -179,3 +178,32 @@ class ArucoMarkerGenerator:
         print(f"✓ Print at {dpi} DPI for accurate {marker_size_inches}\" markers")
         
         return filename
+    
+    def pdf_to_nparray(self, pdf_path:str, dpi:int = PAGE_DPI, is_grayscale:bool = True) -> Union[np.ndarray, list[np.ndarray]]:
+        """ Converts pdf at path to np.ndarray 
+
+        Args:
+        pdf_path: fullpath to the pdf in question
+        is_grayscale: if the pdf should be converted to grayscale color mode. Default true
+        """
+        pillow_pdf = pdf2image.convert_from_path(pdf_path=pdf_path, hide_annotations=True, dpi=dpi, grayscale=is_grayscale)
+        
+        print(f'Number of pages: {len(pillow_pdf)}')
+
+        # Use a list to collect pages
+        np_pdf = []  
+        for i, page in enumerate(pillow_pdf):
+            page_gray = np.array(page)
+            print(page_gray.shape)
+            np_pdf.append(page_gray)  # Append the 2D array to list
+        
+
+        if np_pdf:
+            print(f"Each page shape: {np_pdf[0].shape}")
+            print(f"Page data type: {np_pdf[0].dtype}")
+
+        # extract page array if there's only 1 page
+        if len(np_pdf) == 1:
+            np_pdf = np_pdf[0]
+
+        return np_pdf

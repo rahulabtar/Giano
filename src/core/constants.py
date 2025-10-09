@@ -11,7 +11,7 @@ IN_TO_METERS = 0.0254
 
 # ArUco marker configuration and enums
 PAGE_DPI = 300
-MARKER_SIZE = 1.5
+MARKER_SIZE = 1.2
 CORNER_OFFSET = 0.25
 
 # Def common paper sizes
