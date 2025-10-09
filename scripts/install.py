@@ -37,8 +37,8 @@ def main():
     print("=" * 50)
     
     # Check Python version
-    if sys.version_info < (3, 8):
-        print("Error: Python 3.8 or higher is required")
+    if sys.version_info < (3, 9):
+        print("Error: Python 3.10 or higher is required")
         sys.exit(1)
     
     print(f"✓ Python {sys.version_info.major}.{sys.version_info.minor} detected")

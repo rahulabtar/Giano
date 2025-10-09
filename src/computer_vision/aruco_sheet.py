@@ -1,4 +1,5 @@
-from giano_aruco import ArucoMarkerSystem
+from src.computer_vision.aruco_system import ArucoMarkerSystem
+from src.core.constants import PAPER_SIZES, MARKER_SIZE, CORNER_OFFSET, PAGE_DPI, MARKER_IDS, ASSETS_DIR
 import pdf2image
 from PIL import Image
 import numpy as np
@@ -6,10 +7,7 @@ import os
 import cv2 as cv
 from typing import Union
 
-PAGE_DPI = 300
-MARKER_SIZE = 1
-CORNER_OFFSET = 0.25
-MARKER_IDS = [10,11,12,13,14,15]
+PAPER = PAPER_SIZES.LETTER
 
 def pdf_to_nparray(pdf_path:str, dpi:int = PAGE_DPI, is_grayscale:bool = True) -> Union[np.ndarray, list[np.ndarray]]:
   """ Converts pdf at path to np.ndarray 
@@ -42,28 +40,31 @@ def pdf_to_nparray(pdf_path:str, dpi:int = PAGE_DPI, is_grayscale:bool = True) -
 
 if __name__ == '__main__':
 
-  keys1_locations = [(CORNER_OFFSET, 11 - CORNER_OFFSET - MARKER_SIZE), (8.5 - CORNER_OFFSET - MARKER_SIZE, 11 - CORNER_OFFSET - MARKER_SIZE)]
+  file_name = ("Keys1_Aruco_1.5in.png", "Keys2_Aruco_1.5in.png", "Keys3_Aruco_1.5in.png")
+
+
+  keys1_locations = [(CORNER_OFFSET, PAPER.height - CORNER_OFFSET - MARKER_SIZE), (PAPER.width - CORNER_OFFSET - MARKER_SIZE, PAPER.height - CORNER_OFFSET - MARKER_SIZE)]
   keys1_ids = MARKER_IDS[0:2]
 
   #keys 2 markers will be in the middle
-  keys2_locations = [(CORNER_OFFSET, 11/2 - MARKER_SIZE/2), (8.5 - CORNER_OFFSET - MARKER_SIZE, 11/2 - MARKER_SIZE/2)]
+  keys2_locations = [(CORNER_OFFSET, PAPER.height/2 - MARKER_SIZE/2), (PAPER.width - CORNER_OFFSET - MARKER_SIZE, PAPER.height/2 - MARKER_SIZE/2)]
   keys2_ids = MARKER_IDS[2:4]
 
   # keys 3 for 4 octaves 
-  keys3_locations = [(CORNER_OFFSET, CORNER_OFFSET), (8.5 - CORNER_OFFSET - MARKER_SIZE, CORNER_OFFSET)]
+  keys3_locations = [(CORNER_OFFSET, CORNER_OFFSET), (PAPER.width - CORNER_OFFSET - MARKER_SIZE, CORNER_OFFSET)]
   keys3_ids = MARKER_IDS[4:]
 
   marker_adder = ArucoMarkerSystem()
   
-  keys1_path = os.path.curdir+os.path.sep+"aruco_input"+os.path.sep+"Keys1.pdf"
-  keys2_path = os.path.curdir+os.path.sep+"aruco_input"+os.path.sep+"Keys2.pdf"
+  keys1_path = ASSETS_DIR+"aruco_input"+os.path.sep+"Keys1.pdf"
+  keys2_path = ASSETS_DIR+"aruco_input"+os.path.sep+"Keys2.pdf"
   
   keys1_array = pdf_to_nparray(keys1_path)
   keys3_array = keys1_array.copy()
   keys2_array = pdf_to_nparray(keys2_path)
 
   
-  marker_adder.create_marker_sheet(keys1_array, filename="Keys1withAruco.png", marker_locations=keys1_locations, marker_ids=keys1_ids)
-  marker_adder.create_marker_sheet(keys2_array, filename="Keys2withAruco.png", marker_locations=keys2_locations, marker_ids=keys2_ids)
-  marker_adder.create_marker_sheet(keys3_array, filename="Keys3withAruco.png", marker_locations=keys3_locations, marker_ids=keys3_ids)
+  marker_adder.create_marker_sheet(keys1_array, filename=file_name[0], marker_locations=keys1_locations, marker_ids=keys1_ids)
+  marker_adder.create_marker_sheet(keys2_array, filename=file_name[1], marker_locations=keys2_locations, marker_ids=keys2_ids)
+  marker_adder.create_marker_sheet(keys3_array, filename=file_name[2], marker_locations=keys3_locations, marker_ids=keys3_ids)
 

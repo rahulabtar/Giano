@@ -3,6 +3,7 @@ Core constants used throughout the Giano system.
 """
 
 import os
+from dataclasses import dataclass
 
 # Physical constants
 PI = 3.1415926
@@ -10,9 +11,20 @@ IN_TO_METERS = 0.0254
 
 # ArUco marker configuration and enums
 PAGE_DPI = 300
-MARKER_SIZE = 1
+MARKER_SIZE = 1.5
 CORNER_OFFSET = 0.25
-PAPER_SIZES = {"LETTER": (8.5, 11.0)}
+
+# Def common paper sizes
+@dataclass
+class PaperSize:
+    width: float
+    height: float
+    
+class PAPER_SIZES:
+    LETTER = PaperSize(8.5, 11.0)
+    A4 = PaperSize(8.27, 11.69)
+    A3 = PaperSize(8.5, 14.0)
+
 MARKER_IDS = [10,11,12,13,14,15]
 
 # Hand tracking parameters
