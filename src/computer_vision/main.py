@@ -22,6 +22,7 @@ try:
     from src.computer_vision.aruco_pose_tracker import ArucoPoseTracker
     from src.computer_vision.aruco_polygon_detector import ArucoPolygonDetector
     from src.computer_vision.hand_tracking import HandTracker 
+    from src.computer_vision.finger_aruco_tracker import FingerArucoTracker
     from src.core.constants import MARKER_SIZE, MARKER_IDS, HAND_MODEL_PATH, CAMERA_CALIBRATION_PATH, IN_TO_METERS, PI
 
 except ImportError:
@@ -57,6 +58,7 @@ def main():
     tracker = HandTracker()
     aruco_sys = ArucoPoseTracker()
     aruco_polygon = ArucoPolygonDetector(camera_matrix, dist_coeffs)
+    finger_aruco = FingerArucoTracker()
     
     # Configure pose filtering - you can experiment with these settings
     aruco_sys.configure_pose_filtering(
@@ -112,6 +114,10 @@ def main():
         lm_list, absolute_pos = tracker.position_finder(image, hand_no = 0, draw=False)
         for landmark in lm_list:
             lm_id, x_px, y_px = landmark[0], landmark[1], landmark[2]
+            # fingertip IDs
+            if lm_id in [4,8,12,16,20]:
+                aruco_coords = finger_aruco.transform_finger_to_aruco_space((x_px,y_px), marker_centers_2d)
+                print(aruco_coords)
         
 
 

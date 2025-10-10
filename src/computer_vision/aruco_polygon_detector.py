@@ -21,6 +21,7 @@ class ArucoPolygonDetector:
 
         self.camera_matrix = camera_matrix
         self.dist_coeffs = dist_coeffs
+        self.polygon = None
 
     def sort_markers(self, ordered_ids: List[int], poses: List[dict]):
         found_markers = []
@@ -86,12 +87,16 @@ class ArucoPolygonDetector:
             center_2d = center_2d.reshape(-1, 2)[0]
             marker_centers_2d.append(center_2d)
         
+        self.polygon = marker_centers_2d
         return marker_centers_2d
     
     def draw_box(self, image: np.ndarray, marker_centers_2d: List):
+        #If no marker centers detected, don't draw on the image
         if np.array_equal(marker_centers_2d, [0,0,0,0]):
             return image
         points = np.array(marker_centers_2d, dtype=np.int32)
         image = cv.polylines(image, [points], True, (0, 255, 0), 2)
         
         return image
+    
+    
