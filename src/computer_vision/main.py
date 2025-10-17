@@ -1,4 +1,5 @@
 # Add project root to Python path for direct execution
+from operator import eq
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -23,7 +24,9 @@ try:
     from src.computer_vision.aruco_polygon_detector import ArucoPolygonDetector
     from src.computer_vision.hand_tracking import HandTracker 
     from src.computer_vision.finger_aruco_tracker import FingerArucoTracker
+    from src.computer_vision.piano_key_detector import PianoKeyDetector
     from src.core.constants import MARKER_SIZE, MARKER_IDS, HAND_MODEL_PATH, CAMERA_CALIBRATION_PATH, IN_TO_METERS, PI
+    from src.core.piano_config import get_keyboard_id_from_markers
 
 except ImportError:
     print(f"Could not import user stuff")
@@ -56,12 +59,13 @@ def main():
     cap = cv.VideoCapture(0)
     
     tracker = HandTracker()
-    aruco_sys = ArucoPoseTracker()
+    aruco_pose_tracker = ArucoPoseTracker()
     aruco_polygon = ArucoPolygonDetector(camera_matrix, dist_coeffs)
     finger_aruco = FingerArucoTracker()
+    piano_detector = None  # Will be initialized when keyboard is detected
     
     # Configure pose filtering - you can experiment with these settings
-    aruco_sys.configure_pose_filtering(
+    aruco_pose_tracker.configure_pose_filtering(
         enable_filtering=False,         # Enable similarity filtering
         adaptive_thresholds=False,      # Use adaptive thresholds  
         debug_output=False,              # Set to True to see filtering decisions
@@ -84,11 +88,10 @@ def main():
             break
         h, w, c = image.shape
         
-        # find aruco markersm =
-        if len(poses_list) > 0:
-            last_poses = poses_list.pop()
+        # find aruco markers and FIFO marker poses list logic
+        if len(poses_list) > 0: last_poses = poses_list.pop()
         else: last_poses = None
-        poses = aruco_sys.get_marker_poses(image, 
+        poses = aruco_pose_tracker.get_marker_poses(image, 
                 camera_matrix,
                 dist_coeffs,
                 marker_size_meters=MARKER_SIZE*IN_TO_METERS, 
@@ -101,6 +104,16 @@ def main():
         # Aruco polygon
         marker_centers_2d = aruco_polygon.get_marker_polygon(MARKER_IDS, poses, image, MARKER_SIZE)
         image = aruco_polygon.draw_box(image, marker_centers_2d=marker_centers_2d)
+        if not np.array_equal(marker_centers_2d, [0,0,0,0]):
+            image = finger_aruco.transform_image_to_birdseye(image, marker_centers_2d)
+        # Determine which keyboard is being used and initialize piano detector
+        if poses and piano_detector is None:
+            detected_marker_ids = [pose['id'] for pose in poses]
+            keyboard_id = get_keyboard_id_from_markers(detected_marker_ids)
+            if keyboard_id is not None:
+                piano_detector = PianoKeyDetector(keyboard_id)
+                print(f"Initialized piano detector for keyboard {keyboard_id}")
+        cv.threshold()
         i+=1
         if i >= 30:
             for j, pose in enumerate(poses): 
@@ -112,13 +125,30 @@ def main():
         # HAND FINDER PART
         image = tracker.hands_finder(image)
         lm_list, absolute_pos = tracker.position_finder(image, hand_no = 0, draw=False)
-        for landmark in lm_list:
-            lm_id, x_px, y_px = landmark[0], landmark[1], landmark[2]
-            # fingertip IDs
-            if lm_id in [4,8,12,16,20]:
-                aruco_coords = finger_aruco.transform_finger_to_aruco_space((x_px,y_px), marker_centers_2d)
-                print(aruco_coords)
+        """
+        # Piano key detection
+        if piano_detector is not None and not np.array_equal(marker_centers_2d, [0,0,0,0]):
+            finger_keys = finger_aruco.get_finger_keys(lm_list, marker_centers_2d, piano_detector)
+            image = finger_aruco.draw_finger_keys(image, finger_keys, lm_list)
+            
+        else:
+            # Fallback to original coordinate display
+            for landmark in lm_list:
+                lm_id, x_px, y_px = landmark[0], landmark[1], landmark[2]
+                # fingertip IDs
+                if lm_id in [4,8,12,16,20]:
+                    aruco_coords = finger_aruco.transform_finger_to_aruco_space((x_px,y_px), marker_centers_2d)
+                    if aruco_coords is not None:
+                        print(f"Finger {lm_id}: ArUco coords {aruco_coords}")
+        """
         
+        for landmark in lm_list:
+                lm_id, x_px, y_px = landmark[0], landmark[1], landmark[2]
+                # fingertip IDs
+                if lm_id in [4,8,12,16,20]:
+                    aruco_coords = finger_aruco.transform_finger_to_aruco_space((x_px,y_px), marker_centers_2d)
+                    if aruco_coords is not None:
+                        print(f"Finger {lm_id}: ArUco coords {aruco_coords}")
 
 
        

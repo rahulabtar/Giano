@@ -347,7 +347,7 @@ class ArucoPoseTracker:
     
     def get_marker_poses(self, image: np.ndarray, camera_matrix: np.ndarray, 
                         dist_coeffs: np.ndarray, marker_size_meters: float = 0.05, 
-                        last_poses: Optional[list[dict] | dict[int, dict]] = None) -> list[dict]:
+                        last_poses: Optional[list[dict] | dict[int, dict]] = None) -> list:
         """
         Get 3D pose of all detected markers.
         

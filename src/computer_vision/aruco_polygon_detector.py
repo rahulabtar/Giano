@@ -66,7 +66,6 @@ class ArucoPolygonDetector:
         Returns:
             List of 2D points forming the polygon, or [0,0,0,0] if insufficient markers
         """
-        # poses = self.pose_tracker.get_marker_poses(image, camera_matrix, dist_coeffs, marker_size_meters)
         
         if len(poses) < 4:
             # print('fewer than 4 markers found! Returning blank')
