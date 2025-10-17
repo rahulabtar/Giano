@@ -106,6 +106,9 @@ def main():
         image = aruco_polygon.draw_box(image, marker_centers_2d=marker_centers_2d)
         if not np.array_equal(marker_centers_2d, [0,0,0,0]):
             image = finger_aruco.transform_image_to_birdseye(image, marker_centers_2d)
+            gray = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
+            binary = cv.adaptiveThreshold(gray, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 11, 2)
+
         # Determine which keyboard is being used and initialize piano detector
         if poses and piano_detector is None:
             detected_marker_ids = [pose['id'] for pose in poses]
@@ -113,7 +116,7 @@ def main():
             if keyboard_id is not None:
                 piano_detector = PianoKeyDetector(keyboard_id)
                 print(f"Initialized piano detector for keyboard {keyboard_id}")
-        cv.threshold()
+        
         i+=1
         if i >= 30:
             for j, pose in enumerate(poses): 
@@ -169,7 +172,7 @@ def main():
         text_y = 30
         cv.putText(image, fps_text, (text_x, text_y), font, font_scale, color, thickness)
 
-        cv.imshow("Video", image)
+        cv.imshow("Video", binary)
 
         # Exit the loop if the 'q' key is pressed
         if cv.waitKey(1) & 0xFF == ord('q'):
