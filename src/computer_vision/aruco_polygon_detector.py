@@ -94,8 +94,8 @@ class ArucoPolygonDetector:
         if np.array_equal(marker_centers_2d, [0,0,0,0]):
             return image
         points = np.array(marker_centers_2d, dtype=np.int32)
-        image = cv.polylines(image, [points], True, (0, 255, 0), 2)
+        new_image = cv.polylines(image, [points], True, (0, 255, 0), 2)
         
-        return image
+        return new_image
     
     

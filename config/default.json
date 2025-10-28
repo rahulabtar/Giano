@@ -21,12 +21,31 @@
       "glove_controller": {
         "enabled": true,
         "serial_port": "auto",
-        "baud_rate": 115200
+        "baud_rate": 115200,
+        "action_codes": {
+          "HOVER_GUIDE": 0,
+          "PRESS_CORRECT": 1,
+          "PRESS_INCORRECT": 2,
+          "RELEASE": 3,
+          "NO_KEY": 4,
+          "ERROR": 5
+        }
       },
       "audio_board": {
         "enabled": true,
-        "serial_port": "auto", 
+        "serial_port": "auto",
         "baud_rate": 115200
+      }
+    },
+    "finger_tracking": {
+      "debounce_time": 0.05,
+      "enable_serial_output": true,
+      "motor_ids": {
+        "thumb": 0,
+        "index": 1,
+        "middle": 2,
+        "ring": 3,
+        "pinky": 4
       }
     }
   }
