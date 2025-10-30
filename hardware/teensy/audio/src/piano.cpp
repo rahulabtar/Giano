@@ -43,7 +43,7 @@ AudioConnection patch14(mixer, 0, i2sOutput, 1);
 
 int note [] = {60, 62, 64, 65, 67, 69, 71, 72}; 
 int vel = 70;
-int hold_time=3000;
+int hold_time=10000;
 float decayTime = 500;
 float sustainLevel = 0.5;
 
@@ -149,22 +149,22 @@ void loop() {
     env1.sustain(sustainLevel);
     env2.sustain(sustainLevel);
 */  
-/*
+
     if (hold_time<400) sustainLevel=0.8;
     else if (hold_time<1000) sustainLevel=0.5;
     else if (hold_time<2000) sustainLevel=0.3;
     else sustainLevel=0.15; //assuming very long hold time
-*/
+
     /*env.decay(200);
     env1.decay(200);
     env2.decay(200);
     env3.decay(200);
-    
+    */
     env.sustain(sustainLevel);
     env1.sustain(sustainLevel);
     env2.sustain(sustainLevel);
     env3.sustain(sustainLevel);
-    */
+    
     decayTime = hold_time * 0.7;  // roughly fade for 70% of the hold time
     if (decayTime > 4000) decayTime = 4000; // cap it so it doesn't last forever
     if (decayTime < 200)  decayTime = 200;
