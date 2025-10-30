@@ -1,5 +1,7 @@
+from cProfile import label
 import cv2 as cv
 import numpy as np
+from typing import List, Dict, Tuple, Union
 import sys
 import os
 import time
@@ -14,47 +16,13 @@ from src.core.constants import CAMERA_CALIBRATION_PATH, MARKER_IDS, MARKER_SIZE,
 
 SAVE_PICTURES = False
 
-def analyze_exposure_quality(image):
-    """Analyze image quality for exposure optimization"""
-    gray = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
-    
-    # Calculate statistics
-    mean_brightness = np.mean(gray)
-    std_brightness = np.std(gray)
-    
-    # Count overexposed pixels (too bright)
-    overexposed_pixels = np.sum(gray > 240)
-    total_pixels = gray.size
-    overexposed_ratio = overexposed_pixels / total_pixels
-    
-    # Count underexposed pixels (too dark)
-    underexposed_pixels = np.sum(gray < 15)
-    underexposed_ratio = underexposed_pixels / total_pixels
-    
-    # Ideal brightness range is around 100-150
-    brightness_score = 1.0 - abs(mean_brightness - 125) / 125
-    
-    # Penalize overexposed images heavily
-    overexposure_penalty = overexposed_ratio * 2
-    
-    # Calculate overall quality score
-    quality_score = brightness_score - overexposure_penalty - (underexposed_ratio * 0.5)
-    
-    return {
-        'mean_brightness': mean_brightness,
-        'std_brightness': std_brightness,
-        'overexposed_ratio': overexposed_ratio,
-        'underexposed_ratio': underexposed_ratio,
-        'quality_score': quality_score
-    }
 
-def generate_piano_key_masks(gray_image, edges_image, binary_image):
+def generate_piano_key_masks(gray_image, binary_image):
     """
     Generate piano key masks from edge-detected and binary images.
     
     Args:
         gray_image: Grayscale image of the piano
-        edges_image: Edge-detected image (Canny edges)
         binary_image: Binary thresholded image (keys should be white)
     
     Returns:
@@ -71,27 +39,6 @@ def generate_piano_key_masks(gray_image, edges_image, binary_image):
     kernel_fill = cv.getStructuringElement(cv.MORPH_ELLIPSE, (5, 5))
     filled_binary = cv.morphologyEx(closed_binary, cv.MORPH_CLOSE, kernel_fill)
     
-    # Method 2: Watershed segmentation on edges
-    # Create distance transform
-    dist_transform = cv.distanceTransform(filled_binary, cv.DIST_L2, 5)
-    
-    # Find local maxima as key centers
-    _, sure_fg = cv.threshold(dist_transform, 0.4 * dist_transform.max(), 255, 0)
-    sure_fg = np.uint8(sure_fg)
-    
-    # Create markers for watershed
-    _, markers = cv.connectedComponents(sure_fg)
-    markers = markers + 1  # Add 1 to all labels so that sure background is not 0, but 1
-    
-    # Mark the region of unknown with zero
-    markers[filled_binary == 0] = 0
-    
-    # Apply watershed
-    markers = cv.watershed(cv.cvtColor(gray_image, cv.COLOR_GRAY2BGR), markers)
-    
-    # Create mask from watershed result
-    watershed_mask = np.zeros_like(gray_image)
-    watershed_mask[markers > 1] = 255
     
     # Method 3: Contour-based key detection
     contours, _ = cv.findContours(filled_binary, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
@@ -99,7 +46,7 @@ def generate_piano_key_masks(gray_image, edges_image, binary_image):
     # Filter contours by area and aspect ratio (piano keys are roughly rectangular)
     key_contours = []
     min_area = (width * height) * 0.001  # Minimum 0.1% of image area
-    max_area = (width * height) * 0.1   # Maximum 10% of image area
+    max_area = (width * height) * 0.2  # Maximum 10% of image area
     
     for contour in contours:
         area = cv.contourArea(contour)
@@ -112,19 +59,8 @@ def generate_piano_key_masks(gray_image, edges_image, binary_image):
     
     # Create contour-based mask
     contour_mask = np.zeros_like(gray_image)
-    cv.drawContours(contour_mask, key_contours, -1, 255, -1)
-    
-    # Method 4: Horizontal line detection for key separations
-    # Detect horizontal lines that separate keys
-    horizontal_kernel = cv.getStructuringElement(cv.MORPH_RECT, (width//4, 1))
-    horizontal_lines = cv.morphologyEx(edges_image, cv.MORPH_OPEN, horizontal_kernel)
-    
-    # Detect vertical lines for key boundaries
-    vertical_kernel = cv.getStructuringElement(cv.MORPH_RECT, (1, height//8))
-    vertical_lines = cv.morphologyEx(edges_image, cv.MORPH_OPEN, vertical_kernel)
-    
-    # Combine horizontal and vertical lines
-    combined_lines = cv.add(horizontal_lines, vertical_lines)
+
+    contour_mask = cv.drawContours(contour_mask, key_contours, -1, 255, -1)
     
     # Method 5: Template matching approach (simplified)
     # Create a simple rectangular template for white keys
@@ -156,8 +92,7 @@ def generate_piano_key_masks(gray_image, edges_image, binary_image):
     
     # Combine best methods
     # Weighted combination of different approaches
-    combined_mask = cv.addWeighted(filled_binary, 0.4, watershed_mask, 0.3, 0)
-    combined_mask = cv.addWeighted(combined_mask, 1.0, contour_mask, 0.3, 0)
+    combined_mask = cv.addWeighted(filled_binary, 0.4, contour_mask, 0.3, 0)
     
     # Final cleanup
     kernel_clean = cv.getStructuringElement(cv.MORPH_ELLIPSE, (3, 3))
@@ -166,14 +101,10 @@ def generate_piano_key_masks(gray_image, edges_image, binary_image):
     
     return {
         'binary_filled': filled_binary,
-        'watershed_mask': watershed_mask,
         'contour_mask': contour_mask,
         'template_mask': template_mask,
         'combined_mask': combined_mask,
         'final_mask': final_mask,
-        'horizontal_lines': horizontal_lines,
-        'vertical_lines': vertical_lines,
-        'combined_lines': combined_lines,
         'adaptive_masks': adaptive_masks,
         'key_contours': key_contours,
         'num_keys_detected': len(key_contours)
@@ -279,8 +210,19 @@ def main():
   print("Image confirmed! Running piano processing tests...")
   
   # Run all processing tests on the confirmed image
-  run_piano_processing_tests(image, camera_matrix, dist_coeffs, pose_tracker, 
-                           finger_tracker, polygon_detector)
+  gray, adaptive_mask = run_piano_processing_tests(image, camera_matrix, dist_coeffs, pose_tracker, 
+            finger_tracker, polygon_detector, return_this='adaptive')
+  gray, ridge_mask = run_piano_processing_tests(image, camera_matrix, dist_coeffs, pose_tracker, 
+      finger_tracker, polygon_detector, return_this='ridge')
+  labeled_adaptive = label_keys_from_boundary_mask(adaptive_mask,48)
+  labeled_ridge = label_keys_from_boundary_mask(ridge_mask,48)
+
+  adaptive_image = draw_labeled_keys(gray, labeled_adaptive)
+  ridge_image = draw_labeled_keys(gray, labeled_ridge)
+
+  cv.imshow("Adaptive", adaptive_image)
+  cv.imshow("Ridge", ridge_image)
+  cv.waitKey(0)
   
   cap.release()
   cv.destroyAllWindows()
@@ -289,7 +231,7 @@ def main():
 
 
 def run_piano_processing_tests(image, camera_matrix, dist_coeffs, pose_tracker, 
-                              finger_tracker, polygon_detector, output_dir=None):
+                              finger_tracker, polygon_detector, return_this=None,output_dir=None)->Union[None,tuple[np.ndarray]]:
   """Run all piano processing tests on the confirmed image."""
   
   # Get AruCo marker poses and polygon
@@ -318,70 +260,85 @@ def run_piano_processing_tests(image, camera_matrix, dist_coeffs, pose_tracker,
   # Apply median blur to reduce noise
   med_image = cv.medianBlur(gray, 3)
 
-  
-  # Apply adaptive threshold
-  start_time = time.time()
-  binary = cv.adaptiveThreshold(gray, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 11, 2)
-  adaptive_threshold_time = time.time() - start_time
-  print(f"Adaptive threshold: {adaptive_threshold_time:.4f} seconds")
-  
-  # Invert binary image so keys are white
+  # Switch-like behavior using if/elif on return_this
+  # Compute adaptive binary if needed
+  binary = None
+  adaptive_threshold_time = 0.0
+  if return_this in ['binary', 'binary_inverted', 'adaptive', None]:
+    start_time = time.time()
+    binary = cv.adaptiveThreshold(med_image, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 11, 2)
+    adaptive_threshold_time = time.time() - start_time
+    print(f"Adaptive threshold: {adaptive_threshold_time:.4f} seconds")
+
+  if return_this == 'binary':
+    return gray, binary
+
+  if return_this == 'binary_inverted':
+    return gray, cv.bitwise_not(binary)
+
+  if return_this == 'adaptive':
+    # Turn adaptive result into a boundary mask using morphological gradient
+    inv = cv.bitwise_not(binary)
+    grad = cv.morphologyEx(inv, cv.MORPH_GRADIENT, cv.getStructuringElement(cv.MORPH_RECT,(3,3)))
+    cv.imshow('grad result', grad)
+    cv.waitKey(0)
+    cv.destroyAllWindows()
+    _, boundary = cv.threshold(grad, 1, 255, cv.THRESH_BINARY)
+    return gray, boundary
+
+  if return_this == 'ridge':
+    start_time = time.time()
+    ridge = cv.ximgproc.RidgeDetectionFilter_create()
+    ridge_img = ridge.getRidgeFilteredImage(gray)
+    ridge_time = time.time() - start_time
+    print(f"Ridge detection: {ridge_time:.4f} seconds")
+    _, ridge_bin = cv.threshold(ridge_img, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU)
+    cv.imshow('ridge otsu result', ridge_bin)
+    cv.waitKey(0)
+    cv.destroyAllWindows()
+    return gray, ridge_bin
+
+  # Continue with full pipeline when no early return requested
   start_time = time.time()
   binary_inverted = cv.bitwise_not(binary)
   binary_invert_time = time.time() - start_time
   print(f"Binary inversion: {binary_invert_time:.4f} seconds")
   
-  # Apply Gaussian blur for edge detection
   start_time = time.time()
   blurred = cv.GaussianBlur(gray, (3, 3), 0)
   gaussian_blur_time = time.time() - start_time
   print(f"Gaussian blur: {gaussian_blur_time:.4f} seconds")
   
-  # Try multiple edge detection approaches
-  start_time = time.time()
-  edges1 = cv.Canny(blurred, 30, 100)  # Lower thresholds
-  edges2 = cv.Canny(blurred, 50, 150)  # Original
-  edges3 = cv.Canny(blurred, 20, 60)   # Very sensitive
-  canny_edges_time = time.time() - start_time
-  print(f"Canny edge detection (3 variants): {canny_edges_time:.4f} seconds")
-
-  # Ridge detection filter
   start_time = time.time()
   ridge = cv.ximgproc.RidgeDetectionFilter_create()
   ridge_image = ridge.getRidgeFilteredImage(gray)
   ridge_time = time.time() - start_time
   print(f"Ridge detection: {ridge_time:.4f} seconds")
-  
-  # Sobel edge detection
-  start_time = time.time()
-  sobel_x = cv.Sobel(blurred, cv.CV_64F, 1, 0, ksize=3)
-  sobel_y = cv.Sobel(blurred, cv.CV_64F, 0, 1, ksize=3)
-  sobel_edges = np.sqrt(sobel_x**2 + sobel_y**2)
-  sobel_edges = np.uint8(sobel_edges / sobel_edges.max() * 255)
-  sobel_time = time.time() - start_time
-  print(f"Sobel edge detection: {sobel_time:.4f} seconds")
+ 
   
   # Generate piano key masks from edge detection
   start_time = time.time()
-  key_masks = generate_piano_key_masks(gray, edges2, binary_inverted)
+  key_masks = generate_piano_key_masks(gray, binary_inverted)
   mask_generation_time = time.time() - start_time
   print(f"Key mask generation: {mask_generation_time:.4f} seconds")
+
   
+
   # Calculate total processing time
   total_processing_time = (transform_time + adaptive_threshold_time + 
-                         binary_invert_time + gaussian_blur_time + canny_edges_time + 
-                         ridge_time + sobel_time + mask_generation_time)
+                         binary_invert_time + gaussian_blur_time + 
+                         ridge_time + mask_generation_time)
   print(f"\n=== TIMING SUMMARY ===")
   print(f"Total processing time: {total_processing_time:.4f} seconds")
   
   # Save images if enabled
   if output_dir is not None:
     save_processing_results(image, warped, gray, binary, binary_inverted, 
-                          edges1, edges2, edges3, sobel_edges, ridge_image, 
-                          key_masks, output_dir)
+                          ridge_image, key_masks,
+                          output_dir)
   
   # Display all processing steps
-  display_processing_results(warped, binary_inverted, edges2, sobel_edges, 
+  display_processing_results(warped, binary_inverted, 
                             ridge_image, key_masks)
   
   # Wait for key press to keep windows open
@@ -390,8 +347,122 @@ def run_piano_processing_tests(image, camera_matrix, dist_coeffs, pose_tracker,
   cv.destroyAllWindows()
 
 
+
+
+def label_keys_from_boundary_mask(boundary_mask: np.ndarray,
+                                  start_midi: int,
+                                  expected_keys: int | None = None,
+                                  close_px: int = 3) -> List[Dict]:
+    """
+    boundary_mask: uint8 image, 255 at key boundaries, 0 elsewhere
+    start_midi: MIDI note of the left-most key in view (e.g., 21 for A0, 48 for C3)
+    expected_keys: optional sanity check on count
+    close_px: thickness to ensure separators are closed
+
+    returns list of dicts: [{name, midi, is_black, bbox, contour, centroid}, ...]
+    """
+
+    h, w = boundary_mask.shape[:2]
+
+    # 1) Thicken boundaries to close small gaps
+    k = cv.getStructuringElement(cv.MORPH_RECT, (close_px, close_px))
+    walls = cv.dilate(boundary_mask, k, iterations=1)
+    
+    # 2) Invert to get key regions as 1s
+    regions = cv.bitwise_not(walls)
+    regions = (regions > 0).astype(np.uint8)
+    # cv.imshow('regions pre morph', regions)
+    # cv.waitKey(0)
+    # cv.destroyAllWindows()
+
+    # Optional: remove outer background by keeping largest inside area
+    # Fill holes so each key region is solid
+    regions = cv.morphologyEx(regions, cv.MORPH_OPEN, cv.getStructuringElement(cv.MORPH_RECT,(3,3)))
+  
+  
+    # 3) Connected components
+    num, labels, stats, cents = cv.connectedComponentsWithStats(regions, connectivity=4, ltype=cv.CV_32S)
+
+    # Collect candidates (skip label 0 = background)
+    comps = []
+    for lbl in range(1, num):
+        x, y, ww, hh, area = stats[lbl]
+        if area < 0.001*w*h:  # filter tiny specks
+            continue
+        cx, cy = cents[lbl]
+        aspect = ww / max(1, hh)
+        comps.append({
+            'label': lbl,
+            'bbox': (x, y, ww, hh),
+            'centroid': (float(cx), float(cy)),
+            'area': int(area),
+            'aspect': float(aspect)
+        })
+
+    # 4) Classify black vs white keys (black keys are shorter and near top)
+    # Heuristic thresholds; tune to your birdseye scale
+    print(comps)
+    if not comps:
+        return []
+
+    heights = np.array([c['bbox'][3] for c in comps], dtype=float)
+    median_h = float(np.median(heights))
+    for c in comps:
+        _, y, _, hh = c['bbox']
+        # black keys typically have ~50-70% of white-key height and sit higher (smaller y)
+        c['is_black'] = hh < 0.75*median_h and y < 0.35*h
+
+    # 5) Sort by x (left-to-right). Black keys will ride on top in naming if needed later
+    comps.sort(key=lambda c: c['centroid'][0])
+
+    # 6) Assign names from MIDI sequence
+    # 12-semitone cycle; map MIDI -> name
+    NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B']
+    def name_from_midi(m: int) -> Tuple[str,bool]:
+        n = NAMES[m % 12]
+        octave = (m // 12) - 1
+        return f"{n}{octave}", ('#' in n)
+
+    if expected_keys is not None and len(comps) != expected_keys:
+        # You can log or adjust later; we still proceed
+        pass
+
+    labeled = []
+    midi = start_midi
+    for c in comps:
+        name, is_black_from_midi = name_from_midi(midi)
+        # If the geometry classification disagrees with theory, you may skip or adjust midi here.
+        labeled.append({
+            'name': name,
+            'midi': midi,
+            'is_black': c['is_black'],
+            'bbox': c['bbox'],
+            'centroid': c['centroid'],
+            'label': c['label']
+        })
+        midi += 1
+
+    return labeled
+
+def draw_labeled_keys(image:np.ndarray, labeled:List[dict]):
+  """Draw labeled keys on the image."""
+  if len(image.shape) == 2:
+    image = cv.cvtColor(image, cv.COLOR_GRAY2BGR)
+  for p_key in labeled:
+    x,y,w,h = p_key['bbox']
+    cx,cy = map(int, p_key['centroid'])
+    
+    # points for rectangle
+    pt1 = (int(x), int(y))
+    pt2 = (int(x+w), int(y+h))
+    image = cv.circle(image, (cx, cy), 5, (255, 0, 127), -1)    
+    image = cv.putText(image, p_key['name'], (cx, cy), cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
+    image = cv.rectangle(image, pt1, pt2, (0, 0, 255), 2)
+  return image
+
+
 def save_processing_results(image, warped, gray, binary, binary_inverted, 
-                           edges1, edges2, edges3, sobel_edges, ridge_image, 
+                           ridge_image, 
                            key_masks, output_dir):
   """Save all processing results to files."""
   start_time = time.time()
@@ -404,21 +475,15 @@ def save_processing_results(image, warped, gray, binary, binary_inverted,
   cv.imwrite(os.path.join(output_dir, "05_binary_inverted.jpg"), binary_inverted)
   
   # Save edge detection results
-  cv.imwrite(os.path.join(output_dir, "12_edges_canny_30_100.jpg"), edges1)
-  cv.imwrite(os.path.join(output_dir, "13_edges_canny_50_150.jpg"), edges2)
-  cv.imwrite(os.path.join(output_dir, "14_edges_canny_20_60.jpg"), edges3)
-  cv.imwrite(os.path.join(output_dir, "15_edges_sobel.jpg"), sobel_edges)
   cv.imwrite(os.path.join(output_dir, "16_ridge_detection.jpg"), ridge_image)
   
   # Save key masks
   cv.imwrite(os.path.join(output_dir, "17_binary_filled.jpg"), key_masks['binary_filled'])
-  cv.imwrite(os.path.join(output_dir, "18_watershed_mask.jpg"), key_masks['watershed_mask'])
   cv.imwrite(os.path.join(output_dir, "19_contour_mask.jpg"), key_masks['contour_mask'])
   cv.imwrite(os.path.join(output_dir, "20_template_mask.jpg"), key_masks['template_mask'])
   cv.imwrite(os.path.join(output_dir, "21_combined_mask.jpg"), key_masks['combined_mask'])
   cv.imwrite(os.path.join(output_dir, "22_final_mask.jpg"), key_masks['final_mask'])
-  cv.imwrite(os.path.join(output_dir, "23_horizontal_lines.jpg"), key_masks['horizontal_lines'])
-  cv.imwrite(os.path.join(output_dir, "24_vertical_lines.jpg"), key_masks['vertical_lines'])
+
   
   # Save adaptive threshold results
   for name, mask in key_masks['adaptive_masks'].items():
@@ -430,25 +495,22 @@ def save_processing_results(image, warped, gray, binary, binary_inverted,
   print(f"Detected {key_masks['num_keys_detected']} potential piano keys")
 
 
-def display_processing_results(warped, binary_inverted, edges2, sobel_edges, 
+def display_processing_results(warped, binary_inverted, 
                              ridge_image, key_masks):
   """Display all processing results in windows."""
   
   # Display basic processing steps
   cv.imshow("Warped (Bird's Eye)", warped)
   cv.imshow("Binary Inverted", binary_inverted)
-  cv.imshow("Canny Edges", edges2)
-  cv.imshow("Sobel edges", sobel_edges)
   cv.imshow("Ridge", ridge_image)
   
   # Display key masks
-  cv.imshow("Binary Filled", key_masks['binary_filled'])
-  cv.imshow("Watershed Mask", key_masks['watershed_mask'])
-  cv.imshow("Contour Mask", key_masks['contour_mask'])
-  cv.imshow("Combined Mask", key_masks['combined_mask'])
-  cv.imshow("Final Mask", key_masks['final_mask'])
-  cv.imshow("Horizontal Lines", key_masks['horizontal_lines'])
-  cv.imshow("Vertical Lines", key_masks['vertical_lines'])
+  cv.imshow("Mask Binary Filled", key_masks['binary_filled'])
+  cv.imshow("Mask Contour Mask", key_masks['contour_mask'])
+  cv.imshow("Mask Combined Mask", key_masks['combined_mask'])
+  cv.imshow("Mask Final Mask", key_masks['final_mask'])
+  cv.imshow("template Mask", key_masks['template_mask'])
+
   
   print(f"\nKey Detection Results:")
   print(f"Number of keys detected: {key_masks['num_keys_detected']}")

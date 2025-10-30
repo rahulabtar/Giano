@@ -1,13 +1,13 @@
 from src.computer_vision.aruco_marker_generator import ArucoMarkerGenerator
 from src.core.constants import PAPER_SIZES, MARKER_SIZE, CORNER_OFFSET, PAGE_DPI, MARKER_IDS, ASSETS_DIR
 import os
-
+import cv2 as cv
 
 PAPER = PAPER_SIZES.LETTER
 
 if __name__ == '__main__':
 
-  file_name = ("Keys1_Aruco_1.2in.png", "Keys2_Aruco_1.2in.png", "Keys3_Aruco_1.2in.png")
+  file_name = ("Keys1_wide_Aruco_1.2in.png", "Keys2_wide_Aruco_1.2in.png", "Keys3_wide_Aruco_1.2in.png")
 
 
   keys1_locations = [(CORNER_OFFSET, PAPER.height - CORNER_OFFSET - MARKER_SIZE), (PAPER.width - CORNER_OFFSET - MARKER_SIZE, PAPER.height - CORNER_OFFSET - MARKER_SIZE)]
@@ -23,13 +23,19 @@ if __name__ == '__main__':
 
   marker_adder = ArucoMarkerGenerator()
   
-  keys1_path = os.path.join(ASSETS_DIR,"aruco_input","Keys1.pdf")
-  keys2_path = os.path.join(ASSETS_DIR,"aruco_input","Keys2.pdf")
-  
-  keys1_array = marker_adder.pdf_to_nparray(pdf_path=keys1_path)
-  keys3_array = keys1_array.copy()
-  keys2_array = marker_adder.pdf_to_nparray(pdf_path=keys2_path)
+  # keys1_path = os.path.join(ASSETS_DIR,"aruco_input","Keys1.pdf")
+  # keys2_path = os.path.join(ASSETS_DIR,"aruco_input","Keys2.pdf")
 
+  keys1_path = os.path.join(ASSETS_DIR,"aruco_output","widened_edges", "wider_edges_adaptiveKeys1.png")
+  keys2_path = os.path.join(ASSETS_DIR,"aruco_output","widened_edges", "wider_edges_adaptiveKeys2.png")
+
+  # keys1_array = marker_adder.pdf_to_nparray(pdf_path=keys1_path)
+  # keys3_array = keys1_array.copy()
+  # keys2_array = marker_adder.pdf_to_nparray(pdf_path=keys2_path)
+
+  keys1_array = cv.imread(keys1_path, cv.IMREAD_GRAYSCALE)
+  keys2_array = cv.imread(keys2_path, cv.IMREAD_GRAYSCALE)
+  keys3_array = keys1_array.copy()
   
   marker_adder.create_marker_sheet(keys1_array, 
                                    filename=file_name[0], 

@@ -4,8 +4,53 @@ from typing import List, Dict, Optional, Tuple
 
 
 class FingerArucoTracker():
-    def __init__(self) -> None:
+    def __init__(self, output_size:tuple =(640,480)) -> None:
+        """
+        Args:
+            output_size: (width, height of the output size for birdseye transform)
+        """
         self.fingertip_ids = [4,8,12,16,20]
+        self.output_size = output_size
+
+        output_width, output_height = output_size
+        # array of destination points for birdseye transform
+        self.dst_points = np.array([
+            [0, 0],                           # top-left
+            [output_width, 0],                # top-right
+            [output_width, output_height],    # bottom-right
+            [0, output_height]                # bottom-left
+        ], dtype=np.float32)
+
+    @property
+    def output_size(self)->tuple:
+        """
+        Get the output size for birdseye transform.
+        """
+        return self.__output_size
+
+    @output_size.setter
+    def output_size(self, output_size:tuple):
+        """
+        Set the output size for birdseye transform.
+        Args:
+            output_size: (width, height of the output size for birdseye transform)
+        """
+        if output_size is not None:
+            if len(output_size) != 2:
+                raise ValueError("Output size must be a tuple of (width, height)")
+            if output_size[0] <= 0 or output_size[1] <= 0:
+                raise ValueError("Output size must be greater than 0")
+            if output_size[0] % 2 != 0 or output_size[1] % 2 != 0:
+                raise ValueError("Output size must be even")
+            if output_size[0] > 1920 or output_size[1] > 1080:
+                raise ValueError("Output size must be less than or equal to 1920x1080")
+        self.__output_size = output_size
+
+    def get_output_size(self)->tuple:
+        """
+        Get the output size for birdseye transform.
+        """
+        return self.__output_size
 
     def transform_finger_to_aruco_space(self, finger_pixel_coords:tuple, aruco_polygon_2d:List, use_internal=False):
         """
@@ -129,7 +174,7 @@ class FingerArucoTracker():
                          
         return image    
 
-    def transform_image_to_birdseye(self, image:np.ndarray, aruco_polygon_2d:List, output_size:Optional[tuple]=None) -> np.ndarray:
+    def transform_image_to_birdseye(self, image:np.ndarray, aruco_polygon_2d:List) -> np.ndarray:
         """
         Transform the camera view to show the piano surface from directly above.
         
@@ -146,27 +191,38 @@ class FingerArucoTracker():
         # Define source points (the 4 corners of the ArUco polygon in camera view)
         src_points = np.array(aruco_polygon_2d, dtype=np.float32)
         
-        # Define destination points (a rectangle in the output image)
-        # You can adjust the width/height to control the output resolution
-        if output_size:
-            output_width, output_height = output_size
+
+        if self.output_size:
+            output_width, output_height = self.output_size
         else:
             h,w,_ = image.shape
             output_width = w
             output_height = h
         
-        dst_points = np.array([
-            [0, 0],                           # top-left
-            [output_width, 0],                # top-right
-            [output_width, output_height],    # bottom-right
-            [0, output_height]                # bottom-left
-        ], dtype=np.float32)
-        
+ 
         # Calculate the perspective transformation matrix
-        perspective_matrix = cv.getPerspectiveTransform(src_points, dst_points)
+        perspective_matrix = cv.getPerspectiveTransform(src_points, self.dst_points)
         
         # Apply the transformation
         warped_image = cv.warpPerspective(image, perspective_matrix, 
                                         (output_width, output_height))
         
         return warped_image
+
+    
+    def transform_birdseye_to_image(self, birdseye_image:np.ndarray, aruco_polygon_2d:List, output_size:Optional[tuple]=None):
+        if len(aruco_polygon_2d) != 4 or np.array_equal(aruco_polygon_2d, [0,0,0,0]):
+            return birdseye_image
+        # source points are the destination points of the regularbirdseye transform
+        src_points = self.dst_points
+        dst_points = np.array(aruco_polygon_2d, dtype=np.float32)
+        perspective_matrix = cv.getPerspectiveTransform(src_points, dst_points)
+        
+        if output_size is not None:
+            output_width, output_height = output_size
+            warped_image = cv.warpPerspective(birdseye_image, perspective_matrix, (output_width, output_height))
+        else:
+            warped_image = cv.warpPerspective(birdseye_image, perspective_matrix, 
+                                        (birdseye_image.shape[1], birdseye_image.shape[0]))
+        return warped_image
+
