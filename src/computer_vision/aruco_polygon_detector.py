@@ -52,7 +52,7 @@ class ArucoPolygonDetector:
 
         return ordered
 
-    def get_marker_polygon(self, ordered_ids: List[int], poses: List, image: np.ndarray, marker_size_meters: float = 0.05) -> List:
+    def get_marker_polygon(self, ordered_ids: List[int], poses: List, store_marker_list: bool = False) -> List:
         """
         Get the polygon created by the ArUco markers with the given IDs.
         
@@ -85,8 +85,8 @@ class ArucoPolygonDetector:
             
             center_2d = center_2d.reshape(-1, 2)[0]
             marker_centers_2d.append(center_2d)
-        
-        self.polygon = marker_centers_2d
+        if store_marker_list:
+            self.polygon = marker_centers_2d
         return marker_centers_2d
     
     def draw_box(self, image: np.ndarray, marker_centers_2d: List):

@@ -14,7 +14,283 @@ from src.computer_vision.aruco_polygon_detector import ArucoPolygonDetector
 from src.computer_vision.aruco_pose_tracker import ArucoPoseTracker
 from src.core.constants import CAMERA_CALIBRATION_PATH, MARKER_IDS, MARKER_SIZE, IN_TO_METERS
 
+# global variables
 SAVE_PICTURES = False
+LAST_MARKER_LIST_2D = None
+  
+try:
+  calib_npz = np.load(CAMERA_CALIBRATION_PATH)
+      
+except(OSError): 
+  raise Exception("Calibration file not found!")
+except:
+  raise Exception("Issue with reading calibration file")
+
+camera_matrix = calib_npz["camera_matrix"]
+dist_coeffs = calib_npz["dist_coeffs"]
+
+pose_tracker = ArucoPoseTracker(marker_ids=MARKER_IDS)
+pose_tracker.configure_pose_filtering(
+  enable_filtering=False,
+  adaptive_thresholds=False,
+  debug_output=False,
+  enforce_z_axis_out=False,
+  enable_moving_average=False
+  )
+finger_tracker = FingerArucoTracker()
+polygon_detector = ArucoPolygonDetector(camera_matrix, dist_coeffs)
+
+
+def calibration_loop(cap:cv.VideoCapture) -> tuple:
+  """Calibration loop that allows capturing and confirming images.
+  
+  Returns:
+    tuple: (status, image) where:
+      - status 0: Continue loop
+      - status 1: Image confirmed, proceed with processing
+      - status 2: Quit calibration
+  """
+  captured_image = None
+  
+  while True:
+    success, image = cap.read()
+    if not success: 
+      print("Error reading from camera")
+      return (2, None)
+    
+    # If we have a captured image, show it with confirmation options
+    if captured_image is not None:
+      cv.imshow("Press c to confirm or p to retake", captured_image)
+      key = cv.waitKey(1) & 0xFF
+      
+      if key == ord('c'):
+        cv.destroyAllWindows()
+        return (1, captured_image)
+      elif key == ord('p'):
+        captured_image = None  # Go back to live view
+        cv.destroyWindow("Press c to confirm or p to retake")
+      elif key == ord('q'):
+        cv.destroyAllWindows()
+        return (2, None)
+    
+    # Live view mode - show current camera feed
+    else:
+      cv.imshow("Press p to capture or q to quit", image)
+      key = cv.waitKey(1) & 0xFF
+      
+      if key == ord('p'):
+        captured_image = image.copy()  # Capture current frame
+        cv.destroyWindow("Press p to capture or q to quit")
+      elif key == ord('q'):
+        cv.destroyAllWindows()
+        return (2, None)
+
+
+
+def main():
+  # Create output directory with timestamp
+  if SAVE_PICTURES:
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_dir = os.path.join(os.path.dirname(__file__), "calibration_output", f"calibration_{timestamp}")
+    os.makedirs(output_dir, exist_ok=True)
+    print(f"Saving calibration images to: {output_dir}")
+  
+
+    
+
+
+  cap = cv.VideoCapture(0)
+
+  print("Put the piano in frame and take a picture to calibrate.")
+  print("Press p to capture frame, c to confirm, or q to quit.")
+  
+  # Get confirmed image from calibration loop
+  result, image = calibration_loop(cap)
+  
+  if result == 2:
+    print("Calibration cancelled by user")
+    cap.release()
+    cv.destroyAllWindows()
+    return
+  
+  if result != 1:
+    print("No image captured")
+    cap.release()
+    cv.destroyAllWindows()
+    return
+  
+  print("Image confirmed! Running piano processing tests...")
+  
+  # Run adaptive and ridge tests on the confirmed image
+  gray, adaptive_mask = run_piano_processing_tests(image, camera_matrix, dist_coeffs, return_this='adaptive')
+  med_adaptive_mask = cv.medianBlur(adaptive_mask, 3)
+  cv.imshow('med_adaptive_mask', med_adaptive_mask)
+  cv.waitKey(0)
+  cv.destroyAllWindows()
+
+  adaptive_mask = crop_marker_regions(adaptive_mask, mask_margin_pct=0.09)
+
+  gray, ridge_mask = run_piano_processing_tests(image, camera_matrix, dist_coeffs, return_this='ridge')
+  ridge_mask = crop_marker_regions(ridge_mask, mask_margin_pct=0.09)
+
+  labeled_adaptive = label_keys_from_boundary_mask(adaptive_mask,48)
+  labeled_ridge = label_keys_from_boundary_mask(ridge_mask,48)
+
+  adaptive_image = draw_labeled_keys(gray, labeled_adaptive)
+  ridge_image = draw_labeled_keys(gray, labeled_ridge)
+
+  cv.imshow("Adaptive", adaptive_image)
+  cv.imshow("Ridge", ridge_image)
+  print("Press any key to close windows...")
+  cv.destroyAllWindows()
+
+  adaptive_image = finger_tracker.transform_birdseye_to_image(adaptive_image, polygon_detector.polygon)
+  ridge_image = finger_tracker.transform_birdseye_to_image(ridge_image, polygon_detector.polygon)
+
+  cv.imshow("Adaptive real space", adaptive_image)
+  cv.imshow("Ridge real space", ridge_image)
+  print("Press any key to close windows...")
+  cv.waitKey(0)
+
+  
+  cap.release()
+  cv.destroyAllWindows()
+  
+
+  output_dir = os.path.join(os.path.dirname(__file__), "calibration_output", f"final_masks")
+
+  cv.imwrite(os.path.join(output_dir, "adaptive_mask.jpg"), adaptive_mask)
+  cv.imwrite(os.path.join(output_dir, "ridge_mask.jpg"), ridge_mask)
+  return 0
+
+
+
+def run_piano_processing_tests(image, camera_matrix, dist_coeffs, 
+                              return_this=None,output_dir=None)->Union[None,tuple[np.ndarray]]:
+  """Run all piano processing tests on the confirmed image."""
+  
+  # Get AruCo marker poses and polygon
+  poses = pose_tracker.get_marker_poses(image, camera_matrix, dist_coeffs, MARKER_SIZE*IN_TO_METERS)
+  marker_list_2d = polygon_detector.get_marker_polygon(MARKER_IDS, poses, store_marker_list=True)
+  global LAST_MARKER_LIST_2D
+  LAST_MARKER_LIST_2D = marker_list_2d
+
+  # Check if markers were found
+  if np.array_equal(marker_list_2d, [0,0,0,0]):
+    print("AruCo markers not found in image!")
+    if output_dir is not None:
+      cv.imwrite(os.path.join(output_dir, "00_no_markers_found.jpg"), image)
+      cv.imshow("Original", image)
+    return
+  
+  print("AruCo markers found! Processing piano image...")
+  start_time = time.time()
+  
+  # Transform to bird's eye view
+  warped = finger_tracker.transform_image_to_birdseye(image, marker_list_2d)
+  transform_time = time.time() - start_time
+  print(f"Image transformation (birdseye): {transform_time:.4f} seconds")
+
+  # Convert to grayscale
+  gray = cv.cvtColor(warped, cv.COLOR_BGR2GRAY)
+  
+  # Mask out ArUco marker regions by setting corners to white
+  cv.imshow('masked aruco markers', gray)
+  cv.waitKey(0)
+  cv.destroyAllWindows()
+
+  # Apply median blur to reduce noise
+  med_image = cv.medianBlur(gray, 3)
+  cv.imshow('med_image', med_image)
+  cv.waitKey(0)
+  cv.destroyAllWindows()
+  # med_image = cv.dilate(med_image, cv.getStructuringElement(cv.MORPH_RECT, (3,3)), iterations=1)
+  # Switch-like behavior using if/elif on return_this
+  # Compute adaptive binary if needed
+  binary = None
+  adaptive_threshold_time = 0.0
+  if return_this in ['binary', 'binary_inverted', 'adaptive', None]:
+    start_time = time.time()
+    binary = cv.adaptiveThreshold(med_image, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 11, 2)
+    adaptive_threshold_time = time.time() - start_time
+    print(f"Adaptive threshold: {adaptive_threshold_time:.4f} seconds")
+
+  if return_this == 'binary':
+    return gray, binary
+
+  if return_this == 'binary_inverted':
+    return gray, cv.bitwise_not(binary)
+
+  if return_this == 'adaptive':
+    # Turn adaptive result into a boundary mask using morphological gradient
+    inv = cv.bitwise_not(binary)
+    grad = cv.morphologyEx(inv, cv.MORPH_GRADIENT, cv.getStructuringElement(cv.MORPH_RECT,(3,3)))
+    cv.imshow('grad result', grad)
+    cv.waitKey(0)
+    cv.destroyAllWindows()
+    _, boundary = cv.threshold(grad, 1, 255, cv.THRESH_BINARY)
+    return gray, boundary
+
+  if return_this == 'ridge':
+    
+    start_time = time.time()
+    ridge = cv.ximgproc.RidgeDetectionFilter_create()
+    ridge_img = ridge.getRidgeFilteredImage(med_image)
+    ridge_time = time.time() - start_time
+    print(f"Ridge detection: {ridge_time:.4f} seconds")
+    _, ridge_bin = cv.threshold(ridge_img, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU)
+    cv.imshow('ridge otsu result', ridge_bin)
+    cv.waitKey(0)
+    cv.destroyAllWindows()
+    return gray, ridge_bin
+
+  # Continue with full pipeline when no early return requested
+  start_time = time.time()
+  binary_inverted = cv.bitwise_not(binary)
+  binary_invert_time = time.time() - start_time
+  print(f"Binary inversion: {binary_invert_time:.4f} seconds")
+  
+  start_time = time.time()
+  blurred = cv.GaussianBlur(gray, (3, 3), 0)
+  gaussian_blur_time = time.time() - start_time
+  print(f"Gaussian blur: {gaussian_blur_time:.4f} seconds")
+  
+  start_time = time.time()
+  ridge = cv.ximgproc.RidgeDetectionFilter_create()
+  ridge_image = ridge.getRidgeFilteredImage(gray)
+  ridge_time = time.time() - start_time
+  print(f"Ridge detection: {ridge_time:.4f} seconds")
+ 
+  
+  # Generate piano key masks from edge detection
+  start_time = time.time()
+  key_masks = generate_piano_key_masks(gray, binary_inverted)
+  mask_generation_time = time.time() - start_time
+  print(f"Key mask generation: {mask_generation_time:.4f} seconds")
+
+  
+
+  # Calculate total processing time
+  total_processing_time = (transform_time + adaptive_threshold_time + 
+                         binary_invert_time + gaussian_blur_time + 
+                         ridge_time + mask_generation_time)
+  print(f"\n=== TIMING SUMMARY ===")
+  print(f"Total processing time: {total_processing_time:.4f} seconds")
+  
+  # Save images if enabled
+  if output_dir is not None:
+    save_processing_results(image, warped, gray, binary, binary_inverted, 
+                          ridge_image, key_masks,
+                          output_dir)
+  
+  # Display all processing steps
+  display_processing_results(warped, binary_inverted, 
+                            ridge_image, key_masks)
+  
+  # Wait for key press to keep windows open
+  print("Press any key to close windows...")
+  cv.waitKey(0)
+  cv.destroyAllWindows()
 
 
 def generate_piano_key_masks(gray_image, binary_image):
@@ -110,243 +386,21 @@ def generate_piano_key_masks(gray_image, binary_image):
         'num_keys_detected': len(key_contours)
     }
 
-def calibration_loop(cap:cv.VideoCapture) -> tuple:
-  """Calibration loop that allows capturing and confirming images.
-  
-  Returns:
-    tuple: (status, image) where:
-      - status 0: Continue loop
-      - status 1: Image confirmed, proceed with processing
-      - status 2: Quit calibration
-  """
-  captured_image = None
-  
-  while True:
-    success, image = cap.read()
-    if not success: 
-      print("Error reading from camera")
-      return (2, None)
+
+def crop_marker_regions(mask: np.ndarray, mask_margin_pct: float = 0.1) -> np.ndarray:
+    """
+    This will crop the mask to remove the aruco markers
+    """
+    if mask.dtype != np.uint8:
+        mask = mask.astype(np.uint8)
+    h, w = mask.shape
     
-    # If we have a captured image, show it with confirmation options
-    if captured_image is not None:
-      cv.imshow("Press c to confirm or p to retake", captured_image)
-      key = cv.waitKey(1) & 0xFF
-      
-      if key == ord('c'):
-        cv.destroyAllWindows()
-        return (1, captured_image)
-      elif key == ord('p'):
-        captured_image = None  # Go back to live view
-        cv.destroyWindow("Press c to confirm or p to retake")
-      elif key == ord('q'):
-        cv.destroyAllWindows()
-        return (2, None)
-    
-    # Live view mode - show current camera feed
-    else:
-      cv.imshow("Press p to capture or q to quit", image)
-      key = cv.waitKey(1) & 0xFF
-      
-      if key == ord('p'):
-        captured_image = image.copy()  # Capture current frame
-        cv.destroyWindow("Press p to capture or q to quit")
-      elif key == ord('q'):
-        cv.destroyAllWindows()
-        return (2, None)
+    # Calculate mask size for corners
+    mask_y = int(h * mask_margin_pct)
 
+    cropped = mask[mask_y:h-mask_y, :].copy()
 
-
-def main():
-  # Create output directory with timestamp
-  if SAVE_PICTURES:
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_dir = os.path.join(os.path.dirname(__file__), "calibration_output", f"calibration_{timestamp}")
-    os.makedirs(output_dir, exist_ok=True)
-    print(f"Saving calibration images to: {output_dir}")
-  
-  try:
-    calib_npz = np.load(CAMERA_CALIBRATION_PATH)
-        
-  except(OSError): 
-    print("Calibration file not found!")
-    return
-  except:
-    print("Issue with reading calibration file")
-    return
-    
-  camera_matrix = calib_npz["camera_matrix"]
-  dist_coeffs = calib_npz["dist_coeffs"]
-
-  pose_tracker = ArucoPoseTracker(marker_ids=MARKER_IDS)
-  pose_tracker.configure_pose_filtering(
-    enable_filtering=False,
-    adaptive_thresholds=False,
-    debug_output=False,
-    enforce_z_axis_out=False,
-    enable_moving_average=False
-    )
-  finger_tracker = FingerArucoTracker()
-  polygon_detector = ArucoPolygonDetector(camera_matrix, dist_coeffs)
-
-  cap = cv.VideoCapture(0)
-  print("Put the piano in frame and take a picture to calibrate.")
-  print("Press p to capture frame, c to confirm, or q to quit.")
-  
-  # Get confirmed image from calibration loop
-  result, image = calibration_loop(cap)
-  
-  if result == 2:
-    print("Calibration cancelled by user")
-    cap.release()
-    cv.destroyAllWindows()
-    return
-  
-  if result != 1:
-    print("No image captured")
-    cap.release()
-    cv.destroyAllWindows()
-    return
-  
-  print("Image confirmed! Running piano processing tests...")
-  
-  # Run all processing tests on the confirmed image
-  gray, adaptive_mask = run_piano_processing_tests(image, camera_matrix, dist_coeffs, pose_tracker, 
-            finger_tracker, polygon_detector, return_this='adaptive')
-  gray, ridge_mask = run_piano_processing_tests(image, camera_matrix, dist_coeffs, pose_tracker, 
-      finger_tracker, polygon_detector, return_this='ridge')
-  labeled_adaptive = label_keys_from_boundary_mask(adaptive_mask,48)
-  labeled_ridge = label_keys_from_boundary_mask(ridge_mask,48)
-
-  adaptive_image = draw_labeled_keys(gray, labeled_adaptive)
-  ridge_image = draw_labeled_keys(gray, labeled_ridge)
-
-  cv.imshow("Adaptive", adaptive_image)
-  cv.imshow("Ridge", ridge_image)
-  cv.waitKey(0)
-  
-  cap.release()
-  cv.destroyAllWindows()
-
-
-
-
-def run_piano_processing_tests(image, camera_matrix, dist_coeffs, pose_tracker, 
-                              finger_tracker, polygon_detector, return_this=None,output_dir=None)->Union[None,tuple[np.ndarray]]:
-  """Run all piano processing tests on the confirmed image."""
-  
-  # Get AruCo marker poses and polygon
-  poses = pose_tracker.get_marker_poses(image, camera_matrix, dist_coeffs, MARKER_SIZE*IN_TO_METERS)
-  marker_list_2d = polygon_detector.get_marker_polygon(MARKER_IDS, poses, image, MARKER_SIZE * IN_TO_METERS)
-  
-  # Check if markers were found
-  if np.array_equal(marker_list_2d, [0,0,0,0]):
-    print("AruCo markers not found in image!")
-    if output_dir is not None:
-      cv.imwrite(os.path.join(output_dir, "00_no_markers_found.jpg"), image)
-      cv.imshow("Original", image)
-    return
-  
-  print("AruCo markers found! Processing piano image...")
-  start_time = time.time()
-  
-  # Transform to bird's eye view
-  warped = finger_tracker.transform_image_to_birdseye(image, marker_list_2d)
-  transform_time = time.time() - start_time
-  print(f"Image transformation (birdseye): {transform_time:.4f} seconds")
-
-  # Convert to grayscale
-  gray = cv.cvtColor(warped, cv.COLOR_BGR2GRAY)
-
-  # Apply median blur to reduce noise
-  med_image = cv.medianBlur(gray, 3)
-
-  # Switch-like behavior using if/elif on return_this
-  # Compute adaptive binary if needed
-  binary = None
-  adaptive_threshold_time = 0.0
-  if return_this in ['binary', 'binary_inverted', 'adaptive', None]:
-    start_time = time.time()
-    binary = cv.adaptiveThreshold(med_image, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 11, 2)
-    adaptive_threshold_time = time.time() - start_time
-    print(f"Adaptive threshold: {adaptive_threshold_time:.4f} seconds")
-
-  if return_this == 'binary':
-    return gray, binary
-
-  if return_this == 'binary_inverted':
-    return gray, cv.bitwise_not(binary)
-
-  if return_this == 'adaptive':
-    # Turn adaptive result into a boundary mask using morphological gradient
-    inv = cv.bitwise_not(binary)
-    grad = cv.morphologyEx(inv, cv.MORPH_GRADIENT, cv.getStructuringElement(cv.MORPH_RECT,(3,3)))
-    cv.imshow('grad result', grad)
-    cv.waitKey(0)
-    cv.destroyAllWindows()
-    _, boundary = cv.threshold(grad, 1, 255, cv.THRESH_BINARY)
-    return gray, boundary
-
-  if return_this == 'ridge':
-    start_time = time.time()
-    ridge = cv.ximgproc.RidgeDetectionFilter_create()
-    ridge_img = ridge.getRidgeFilteredImage(gray)
-    ridge_time = time.time() - start_time
-    print(f"Ridge detection: {ridge_time:.4f} seconds")
-    _, ridge_bin = cv.threshold(ridge_img, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU)
-    cv.imshow('ridge otsu result', ridge_bin)
-    cv.waitKey(0)
-    cv.destroyAllWindows()
-    return gray, ridge_bin
-
-  # Continue with full pipeline when no early return requested
-  start_time = time.time()
-  binary_inverted = cv.bitwise_not(binary)
-  binary_invert_time = time.time() - start_time
-  print(f"Binary inversion: {binary_invert_time:.4f} seconds")
-  
-  start_time = time.time()
-  blurred = cv.GaussianBlur(gray, (3, 3), 0)
-  gaussian_blur_time = time.time() - start_time
-  print(f"Gaussian blur: {gaussian_blur_time:.4f} seconds")
-  
-  start_time = time.time()
-  ridge = cv.ximgproc.RidgeDetectionFilter_create()
-  ridge_image = ridge.getRidgeFilteredImage(gray)
-  ridge_time = time.time() - start_time
-  print(f"Ridge detection: {ridge_time:.4f} seconds")
- 
-  
-  # Generate piano key masks from edge detection
-  start_time = time.time()
-  key_masks = generate_piano_key_masks(gray, binary_inverted)
-  mask_generation_time = time.time() - start_time
-  print(f"Key mask generation: {mask_generation_time:.4f} seconds")
-
-  
-
-  # Calculate total processing time
-  total_processing_time = (transform_time + adaptive_threshold_time + 
-                         binary_invert_time + gaussian_blur_time + 
-                         ridge_time + mask_generation_time)
-  print(f"\n=== TIMING SUMMARY ===")
-  print(f"Total processing time: {total_processing_time:.4f} seconds")
-  
-  # Save images if enabled
-  if output_dir is not None:
-    save_processing_results(image, warped, gray, binary, binary_inverted, 
-                          ridge_image, key_masks,
-                          output_dir)
-  
-  # Display all processing steps
-  display_processing_results(warped, binary_inverted, 
-                            ridge_image, key_masks)
-  
-  # Wait for key press to keep windows open
-  print("Press any key to close windows...")
-  cv.waitKey(0)
-  cv.destroyAllWindows()
-
-
+    return cropped
 
 
 def label_keys_from_boundary_mask(boundary_mask: np.ndarray,
@@ -354,95 +408,131 @@ def label_keys_from_boundary_mask(boundary_mask: np.ndarray,
                                   expected_keys: int | None = None,
                                   close_px: int = 3) -> List[Dict]:
     """
-    boundary_mask: uint8 image, 255 at key boundaries, 0 elsewhere
+    boundary_mask: uint8 image with aruco markers cropped out, 255 at key boundaries, 0 elsewhere
     start_midi: MIDI note of the left-most key in view (e.g., 21 for A0, 48 for C3)
     expected_keys: optional sanity check on count
     close_px: thickness to ensure separators are closed
 
     returns list of dicts: [{name, midi, is_black, bbox, contour, centroid}, ...]
     """
+    output_dir = os.path.join(os.path.dirname(__file__), "calibration_output", f"final_masks")
 
-    h, w = boundary_mask.shape[:2]
+    h, w = boundary_mask.shape
 
     # 1) Thicken boundaries to close small gaps
     k = cv.getStructuringElement(cv.MORPH_RECT, (close_px, close_px))
     walls = cv.dilate(boundary_mask, k, iterations=1)
-    
+
+    cv.imshow('walls', walls)
+    cv.waitKey(0)
+    cv.destroyAllWindows()
+
+    # MORPH_OPEN erodes then dilates (thins walls) - REMOVE THIS if walls are already thin!
+    # Only use MORPH_CLOSE if you need to close gaps (dilate then erode - thickens)
+    # k_close = cv.getStructuringElement(cv.MORPH_RECT, (3,3))
+    # walls = cv.morphologyEx(walls, cv.MORPH_OPEN, k_close)  # REMOVED - was eroding too much
+
     # 2) Invert to get key regions as 1s
     regions = cv.bitwise_not(walls)
     regions = (regions > 0).astype(np.uint8)
-    # cv.imshow('regions pre morph', regions)
-    # cv.waitKey(0)
-    # cv.destroyAllWindows()
-
-    # Optional: remove outer background by keeping largest inside area
-    # Fill holes so each key region is solid
-    regions = cv.morphologyEx(regions, cv.MORPH_OPEN, cv.getStructuringElement(cv.MORPH_RECT,(3,3)))
   
+    # 3) Dilate regions slightly to recover area lost during wall dilation
+    # This makes contours trace closer to actual key boundaries (reduces "erosion" effect)
+    if close_px > 1:  # Only if we dilated walls significantly
+        # Slightly grow the key regions back (undo some of the wall dilation)
+        dilate_kernel = cv.getStructuringElement(cv.MORPH_RECT, (close_px-1, close_px-1))
+        regions = cv.dilate(regions, dilate_kernel, iterations=1)
+
+
   
     # 3) Connected components
-    num, labels, stats, cents = cv.connectedComponentsWithStats(regions, connectivity=4, ltype=cv.CV_32S)
+    # num, labels, stats, cents = cv.connectedComponentsWithStats(regions, connectivity=4, ltype=cv.CV_32S)
+    # regions is the filled key regions (0/1 or 0/255)
+    contours, _ = cv.findContours((regions*255).astype(np.uint8),
+                                  cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+    countour_image = cv.cvtColor(boundary_mask.copy(), cv.COLOR_GRAY2BGR)
+    contour_image = cv.drawContours(countour_image, contours, -1, (255, 0, 0), 2)
+    cv.imshow('contour image', contour_image)
+    cv.waitKey(0)
+    cv.destroyAllWindows()
 
-    # Collect candidates (skip label 0 = background)
-    comps = []
-    for lbl in range(1, num):
-        x, y, ww, hh, area = stats[lbl]
-        if area < 0.001*w*h:  # filter tiny specks
-            continue
-        cx, cy = cents[lbl]
-        aspect = ww / max(1, hh)
-        comps.append({
-            'label': lbl,
-            'bbox': (x, y, ww, hh),
-            'centroid': (float(cx), float(cy)),
-            'area': int(area),
-            'aspect': float(aspect)
-        })
-
-    # 4) Classify black vs white keys (black keys are shorter and near top)
-    # Heuristic thresholds; tune to your birdseye scale
-    print(comps)
-    if not comps:
-        return []
-
-    heights = np.array([c['bbox'][3] for c in comps], dtype=float)
-    median_h = float(np.median(heights))
-    for c in comps:
-        _, y, _, hh = c['bbox']
-        # black keys typically have ~50-70% of white-key height and sit higher (smaller y)
-        c['is_black'] = hh < 0.75*median_h and y < 0.35*h
-
-    # 5) Sort by x (left-to-right). Black keys will ride on top in naming if needed later
-    comps.sort(key=lambda c: c['centroid'][0])
-
-    # 6) Assign names from MIDI sequence
-    # 12-semitone cycle; map MIDI -> name
+    keys = []
     NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B']
+
     def name_from_midi(m: int) -> Tuple[str,bool]:
-        n = NAMES[m % 12]
-        octave = (m // 12) - 1
-        return f"{n}{octave}", ('#' in n)
+      n = NAMES[m % 12]
+      octave = (m // 12) - 1
+      return f"{n}{octave}", ('#' in n)
 
-    if expected_keys is not None and len(comps) != expected_keys:
-        # You can log or adjust later; we still proceed
-        pass
+    def is_square_like(cnt, bbox):
+        """Check if contour is square-like (ArUco markers are squares)."""
+        x, y, w, h = bbox
+        aspect = w / max(h, 1)
+        # Square-like: aspect ratio between 0.7 and 1.4
+        is_square = 0.7 <= aspect <= 1.4
+        
+        # Also check rectangularity - squares have high extent and solidity
+        area = cv.contourArea(cnt)
+        bbox_area = w * h
+        extent = area / bbox_area if bbox_area > 0 else 0
+        
+        # ArUco markers are typically very rectangular (high extent > 0.8)
+        very_rectangular = extent > 0.8
+        
+        return is_square and very_rectangular and area < 0.05 * regions.size  # Small-medium size
 
-    labeled = []
-    midi = start_midi
-    for c in comps:
-        name, is_black_from_midi = name_from_midi(midi)
-        # If the geometry classification disagrees with theory, you may skip or adjust midi here.
-        labeled.append({
-            'name': name,
-            'midi': midi,
-            'is_black': c['is_black'],
-            'bbox': c['bbox'],
-            'centroid': c['centroid'],
-            'label': c['label']
-        })
-        midi += 1
+    for cnt in contours:
+        area = cv.contourArea(cnt)
+        if area < 0.001 * regions.size or area > 0.1 * regions.size:  # filter specks and large areas
+            continue
+        # The spatial moments 
+        # are computed as:
+        # m00 = sum(region)
+        # m01 = sum(region * y)
+        # m10 = sum(region * x)
+        # m11 = sum(region * x * y)
 
-    return labeled
+        M = cv.moments(cnt)
+        if M['m00'] == 0:
+            continue
+        cx = int(M['m10'] / M['m00'])
+        cy = int(M['m01'] / M['m00'])
+        x, y, w, h = cv.boundingRect(cnt)
+        
+        # Filter out square-like shapes (ArUco markers that might have escaped cropping)
+        if is_square_like(cnt, (x, y, w, h)):
+            continue
+        
+        # optional simplification (keeps notches)
+        poly = cv.approxPolyDP(cnt, epsilon=0.01 * cv.arcLength(cnt, True), closed = True)
+
+        keys.append({
+            'contour': cnt,        # full contour
+            'poly': poly,          # simplified polygon
+            'centroid': (cx, cy),
+            'bbox': (x, y, w, h),
+            'height': h,
+            'y': y,
+            'area': area
+        }) 
+    # Sort keys by x (horizontal start of boundingRect)
+    keys.sort(key=lambda k: k['bbox'][0])
+    print(keys)
+    for k in keys:
+      midi = start_midi + keys.index(k)
+      name, is_black_from_midi = name_from_midi(midi)
+      k['name'] = name
+      k['midi_note'] = midi
+      k['is_black'] = is_black_from_midi
+    
+    if not keys:
+      print("No keys found")
+      return []
+    return keys
+        
+   
+
+    
 
 def draw_labeled_keys(image:np.ndarray, labeled:List[dict]):
   """Draw labeled keys on the image."""
@@ -457,7 +547,7 @@ def draw_labeled_keys(image:np.ndarray, labeled:List[dict]):
     pt2 = (int(x+w), int(y+h))
     image = cv.circle(image, (cx, cy), 5, (255, 0, 127), -1)    
     image = cv.putText(image, p_key['name'], (cx, cy), cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
-    image = cv.rectangle(image, pt1, pt2, (0, 0, 255), 2)
+    image = cv.polylines(image, [p_key['poly']], isClosed=True, color=(0, 0, 255), thickness=2)
   return image
 
 
