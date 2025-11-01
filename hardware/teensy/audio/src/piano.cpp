@@ -31,19 +31,22 @@ AudioConnection patch3(fmModulator, 0, fmCarrier, 0); // FM connection
 AudioConnection patch6(fmHarmonic1, 0, env1, 0);
 AudioConnection patch7(fmHarmonic2, 0, env2, 0);
 AudioConnection patch8(fmHarmonic3, 0, env3, 0);
-//AudioConnection patch9(fmHarmonic4, 0, env4, 0);
-//AudioConnection patch10(fmHarmonic5, 0, env5, 0);
+AudioConnection patch9(fmHarmonic4, 0, env4, 0);
+AudioConnection patch10(fmHarmonic5, 0, env5, 0);
 
-
-AudioConnection patch11(env1, 0, mixer, 1);
-AudioConnection patch12(env2, 0, mixer, 2);
-
-AudioConnection patch13(mixer, 0, i2sOutput, 0);
-AudioConnection patch14(mixer, 0, i2sOutput, 1);
+//double check mixer!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+AudioConnection patch11(env, 0, mixer, 0);
+AudioConnection patch12(env1, 0, mixer, 1);
+AudioConnection patch13(env2, 0, mixer, 2);
+AudioConnection patch14(env3, 0, mixer, 3);
+AudioConnection patch15(env4, 0, mixer, 4);
+AudioConnection patch16(env5, 0, mixer, 5);
+AudioConnection patch17(mixer, 0, i2sOutput, 0);
+AudioConnection patch18(mixer, 0, i2sOutput, 1);
 
 int note [] = {60, 62, 64, 65, 67, 69, 71, 72}; 
 int vel = 70;
-int hold_time=10000;
+int hold_time=2000;
 float decayTime = 500;
 float sustainLevel = 0.5;
 
@@ -57,38 +60,36 @@ void setup() {
 
 
   // Envelope setup
- // env.attack(2);     // milliseconds
-  //other option for attack:
   env.attack(2 - (vel / 70)); // softer notes have slower attack
   env.decay(500);    // milliseconds
   env.sustain(sustainLevel);  
-  env.release(300);    // not used if single note
+  env.release(300);    
 
-  env.attack(2 - (vel / 70));  // milliseconds
+  env1.attack(2 - (vel / 70));  // milliseconds
   env1.decay(500);    // milliseconds
   env1.sustain(sustainLevel);  
-  env1.release(200);    // not used if single note
+  env1.release(300);    
 
-  env.attack(2 - (vel / 70)); // milliseconds
+  env2.attack(2 - (vel / 70)); // milliseconds
   env2.decay(500);    // milliseconds
   env2.sustain(sustainLevel);  
-  env2.release(100);    // not used if single note
+  env2.release(300);    
   
-  env.attack(2 - (vel / 70)); // milliseconds
+  env3.attack(2 - (vel / 70)); // milliseconds
   env3.decay(500);    // milliseconds
   env3.sustain(sustainLevel);  
-  env3.release(50);    // not used if single note
+  env3.release(300);    
 
-  /*with below sounds like an organ i dont like
-  env.attack(2); // softer notes have slower attack// milliseconds
+  //with below sounds like an organ i dont like
+  /*env4.attack(2 - (vel / 70)); // softer notes have slower attack// milliseconds
   env4.decay(200);    // milliseconds
   env4.sustain(0.25);  // fully decay
-  env4.release(50);    // not used if single note
+  env4.release(50);    
 
-  env.attack(2); // softer notes have slower attack// milliseconds
+  env5.attack(2 - (vel / 70)); // softer notes have slower attack// milliseconds
   env5.decay(200);    // milliseconds
   env5.sustain(0.25);  // fully decay
-  env5.release(50);    // not used if single note
+  env5.release(50);    
   */
   
 }
@@ -123,6 +124,9 @@ void noteOn(byte channel, byte note, byte velocity) {
   env.noteOn();
   env1.noteOn();
   env2.noteOn();
+  env3.noteOn();
+  env4.noteOn();
+  env5.noteOn();
 
 }
 
@@ -132,6 +136,9 @@ void noteOff(byte channel, byte note, byte velocity){
   env.noteOff(); 
   env1.noteOff();
   env2.noteOff(); 
+  env3.noteOff();
+  env4.noteOff();
+  env5.noteOff();
 }
 
 
@@ -149,22 +156,19 @@ void loop() {
     env1.sustain(sustainLevel);
     env2.sustain(sustainLevel);
 */  
-
+//change sustain pt of ADSR based on hold time
     if (hold_time<400) sustainLevel=0.8;
     else if (hold_time<1000) sustainLevel=0.5;
     else if (hold_time<2000) sustainLevel=0.3;
-    else sustainLevel=0.15; //assuming very long hold time
-
-    /*env.decay(200);
-    env1.decay(200);
-    env2.decay(200);
-    env3.decay(200);
-    */
+    else sustainLevel=0.07; //assuming very long hold time
     env.sustain(sustainLevel);
     env1.sustain(sustainLevel);
     env2.sustain(sustainLevel);
     env3.sustain(sustainLevel);
+    env4.sustain(sustainLevel);
+    env5.sustain(sustainLevel);
     
+    //change decay pt of ADSR based on hold time
     decayTime = hold_time * 0.7;  // roughly fade for 70% of the hold time
     if (decayTime > 4000) decayTime = 4000; // cap it so it doesn't last forever
     if (decayTime < 200)  decayTime = 200;
@@ -172,11 +176,16 @@ void loop() {
     env1.decay(decayTime);
     env2.decay(decayTime);
     env3.decay(decayTime);
+    env4.decay(decayTime);
+    env5.decay(decayTime);
+
+    //change release pt of ADSR based on hold time
+    //???
 
    
     noteOn(1, note[i], vel);
-    delay(hold_time);
-    noteOff(1, note[i], vel);
+    delay(hold_time); //controls how long note stays in sustain stage (is held for the decayTime + 1.5 seconds)
+    noteOff(1, note[i], vel); //begins release stage
     delay(500);
     
 
