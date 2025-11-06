@@ -9,8 +9,19 @@ Defines binary protocols for:
 import struct
 from enum import IntEnum
 from typing import Optional, Tuple, Dict, Any
+import numpy as np
+
+class FingerInstructionSet:
+    fingerNumber: np.uint8
+    midiNote: np.uint8  
+    commandCode: np.uint8
+    distanceToNote: np.float32
+
+class OctaveInstructionSet:
+    handPosition: tuple[float, float]
 
 
+# TODO: Discuss w 
 class ActionCode(IntEnum):
     """Action codes for glove controller haptic feedback."""
     HOVER_GUIDE = 0          # Gentle vibration to guide finger to key
@@ -21,6 +32,7 @@ class ActionCode(IntEnum):
     ERROR = 5                # Error state
 
 
+# TODO: Add MIDI control codes
 class MIDIControl(IntEnum):
     """MIDI command codes."""
     NOTE_OFF = 0x80
@@ -31,17 +43,19 @@ class MIDIControl(IntEnum):
 class GloveProtocol:
     """Protocol handler for glove controller communication."""
     
-    # 3-byte message: [motor_id, midi_note, action]
+    # 3-byte message: [fingerInstructionSet]
     PACK_FORMAT = 'BBB'  # 3 unsigned bytes
     MESSAGE_SIZE = 3
     
+
+    # TODO: FIX THIS FUNCTION
     @staticmethod
     def pack(motor_id: int, midi_note: int, action: int) -> bytes:
         """
         Pack glove command into binary message.
         
         Args:
-            motor_id: Finger motor ID (0-4: thumb, index, middle, ring, pinky)
+            fingerInstructionSet: FingerInstructionSet object
             midi_note: MIDI note number (0-127)
             action: Action code from ActionCode enum
             
@@ -60,6 +74,7 @@ class GloveProtocol:
         
         return struct.pack(GloveProtocol.PACK_FORMAT, motor_id, midi_note, action)
     
+    # TODO: WRITE THIS FUNCTION
     @staticmethod
     def unpack(message: bytes) -> Optional[Tuple[int, int, int]]:
         """
