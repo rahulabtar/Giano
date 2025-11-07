@@ -51,7 +51,7 @@ while True:
     cv.destroyAllWindows()
     break
 
-contours, _ = cv.findContours(cleaned_mask, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+contours, _ = cv.findContours(open, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
 
 
 """from skimage.filters import threshold_multiotsu
