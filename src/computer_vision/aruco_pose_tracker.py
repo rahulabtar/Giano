@@ -437,7 +437,7 @@ class ArucoPoseTracker:
                 
             # Return as list for backward compatibility, but store internally as dict
             return list(poses_dict.values())
-        return []
+        raise ValueError("No markers found in image")
     
     def calculate_pose_similarity(self, current_pose: dict, previous_pose: dict, 
                                  adaptive_thresholds: bool = True) -> dict:

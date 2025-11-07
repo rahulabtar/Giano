@@ -1,13 +1,14 @@
+import os
+
 from src.computer_vision.aruco_marker_generator import ArucoMarkerGenerator
 from src.core.constants import PAPER_SIZES, MARKER_SIZE, CORNER_OFFSET, PAGE_DPI, MARKER_IDS, ASSETS_DIR
-import os
 import cv2 as cv
 
 PAPER = PAPER_SIZES.LETTER
 
 if __name__ == '__main__':
 
-  file_name = ("Keys1_wide_Aruco_1.2in.png", "Keys2_wide_Aruco_1.2in.png", "Keys3_wide_Aruco_1.2in.png")
+  file_name = ("Keys1_9px_Aruco_1.2in.png", "Keys2_9px_Aruco_1.2in.png", "Keys3_9px_Aruco_1.2in.png")
 
 
   keys1_locations = [(CORNER_OFFSET, PAPER.height - CORNER_OFFSET - MARKER_SIZE), (PAPER.width - CORNER_OFFSET - MARKER_SIZE, PAPER.height - CORNER_OFFSET - MARKER_SIZE)]
@@ -26,8 +27,8 @@ if __name__ == '__main__':
   # keys1_path = os.path.join(ASSETS_DIR,"aruco_input","Keys1.pdf")
   # keys2_path = os.path.join(ASSETS_DIR,"aruco_input","Keys2.pdf")
 
-  keys1_path = os.path.join(ASSETS_DIR,"aruco_output","widened_edges", "wider_edges_adaptiveKeys1.png")
-  keys2_path = os.path.join(ASSETS_DIR,"aruco_output","widened_edges", "wider_edges_adaptiveKeys2.png")
+  keys1_path = os.path.join(ASSETS_DIR,"aruco_output","widened_edges", "wider_edges_adaptive_9_Keys1.png")
+  keys2_path = os.path.join(ASSETS_DIR,"aruco_output","widened_edges", "wider_edges_adaptive_9_Keys2.png")
 
   # keys1_array = marker_adder.pdf_to_nparray(pdf_path=keys1_path)
   # keys3_array = keys1_array.copy()

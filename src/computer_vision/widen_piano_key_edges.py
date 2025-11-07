@@ -156,11 +156,11 @@ def process_piano_key_images(input_dir, output_dir, edge_width=3, method='adapti
         result, edge_mask = widen_edges_advanced(img, method=method, edge_width=edge_width)
         
         # Save result
-        output_path = os.path.join(output_dir, f"wider_edges_{method}{img_file.name}")
+        output_path = os.path.join(output_dir, f"wider_edges_{method}_{edge_width}_{img_file.name}")
         cv.imwrite(output_path, result)
         
         # Save edge mask for debugging
-        debug_path = os.path.join(output_dir, f"edge_mask_{method}{img_file.name}")
+        debug_path = os.path.join(output_dir, f"edge_mask_{method}_{edge_width}_{img_file.name}")
         cv.imwrite(debug_path, edge_mask)
         
     
@@ -181,7 +181,7 @@ def main():
     process_piano_key_images(
         input_dir=input_dir,
         output_dir=output_dir,
-        edge_width=5,  # Width of edges in pixels
+        edge_width=9,  # Width of edges in pixels
         method='adaptive'  # Options: 'adaptive', 'canny', 'threshold'
     )
     

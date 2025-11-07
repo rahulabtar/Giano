@@ -2,6 +2,7 @@ import cv2 as cv
 import numpy as np
 import glob
 import os
+from datetime import datetime
 
 PATTERNS = {"chessboard_9x6": "https://github.com/opencv/opencv/blob/master/doc/pattern.png"}
  
@@ -78,11 +79,11 @@ def load_camera_calibration():
         print("No calibration file found. Run calibrate_camera() first.")
         return None, None
     
-def take_calibration_photos():
+def take_calibration_photos(user_filename:str, n_photos:int):
     """
     Interactive photo capture with live calibration and quality checking.
     """
-    cap = cv.VideoCapture(0)
+    cap = cv.VideoCapture(1)
 
     # Create output directory
     import os
@@ -102,7 +103,7 @@ def take_calibration_photos():
     imgpoints = []  # 2D points in image plane
     
     photo_count = 0
-    target_photos = 25
+    target_photos = n_photos
     current_error = None
     camera_matrix = None
     dist_coeffs = None
@@ -186,7 +187,7 @@ def take_calibration_photos():
                     print(f"  Live calibration: {len(objpoints)} images, error: {current_error:.3f} pixels")
                     
                     # Save intermediate calibration
-                    np.savez('camera_calibration_live.npz', 
+                    np.savez(f'camera_calibration_live.npz', 
                              camera_matrix=camera_matrix, 
                              dist_coeffs=dist_coeffs,
                              reprojection_error=current_error,
@@ -236,7 +237,7 @@ def take_calibration_photos():
             print(f"Distortion Coefficients:\n{dist_coeffs.flatten()}")
             
             # Save final calibration
-            np.savez('camera_calibration.npz', 
+            np.savez(f'camera_calibration_{user_filename}.npz', 
                      camera_matrix=camera_matrix, 
                      dist_coeffs=dist_coeffs,
                      reprojection_error=ret_final,
@@ -268,7 +269,9 @@ if __name__ == "__main__":
     choice = input("Choose option (1-3): ").strip()
     
     if choice == "1":
-        camera_matrix, dist_coeffs = take_calibration_photos()
+        n_photos = int(input("# of photos to take: "))
+        filename = input("Type filename for calibration: ")
+        camera_matrix, dist_coeffs = take_calibration_photos(user_filename=filename, n_photos=n_photos)
         if camera_matrix is not None:
             print("✓ Live calibration completed successfully!")
         

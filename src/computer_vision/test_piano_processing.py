@@ -128,27 +128,36 @@ def main():
   cv.waitKey(0)
   cv.destroyAllWindows()
 
-  adaptive_mask = crop_marker_regions(adaptive_mask, mask_margin_pct=0.09)
+  adaptive_mask, adaptive_y_offset = crop_marker_regions(adaptive_mask, mask_margin_pct=0.09)
+
+  _, binary_mask = run_piano_processing_tests(image, camera_matrix, dist_coeffs, return_this='binary')
+  binary_mask, binary_y_offset = crop_marker_regions(binary_mask, mask_margin_pct=0.09)
+  
 
   gray, ridge_mask = run_piano_processing_tests(image, camera_matrix, dist_coeffs, return_this='ridge')
-  ridge_mask = crop_marker_regions(ridge_mask, mask_margin_pct=0.09)
+  ridge_mask, ridge_y_offset = crop_marker_regions(ridge_mask, mask_margin_pct=0.09)
 
   labeled_adaptive = label_keys_from_boundary_mask(adaptive_mask,48)
   labeled_ridge = label_keys_from_boundary_mask(ridge_mask,48)
+  labeled_binary = label_keys_from_boundary_mask(binary_mask,48)
+  
 
-  adaptive_image = draw_labeled_keys(gray, labeled_adaptive)
-  ridge_image = draw_labeled_keys(gray, labeled_ridge)
+  adaptive_image = draw_labeled_keys(gray, labeled_adaptive, y_offset=adaptive_y_offset)
+  ridge_image = draw_labeled_keys(gray, labeled_ridge, y_offset=ridge_y_offset)
+  binary_image = draw_labeled_keys(gray, labeled_binary, y_offset=binary_y_offset)
+ 
 
-  cv.imshow("Adaptive", adaptive_image)
-  cv.imshow("Ridge", ridge_image)
   print("Press any key to close windows...")
   cv.destroyAllWindows()
 
   adaptive_image = finger_tracker.transform_birdseye_to_image(adaptive_image, polygon_detector.polygon)
   ridge_image = finger_tracker.transform_birdseye_to_image(ridge_image, polygon_detector.polygon)
+  binary_image = finger_tracker.transform_birdseye_to_image(binary_image, polygon_detector.polygon)
 
+  
   cv.imshow("Adaptive real space", adaptive_image)
   cv.imshow("Ridge real space", ridge_image)
+  cv.imshow("Binary real space", binary_image)
   print("Press any key to close windows...")
   cv.waitKey(0)
 
@@ -195,15 +204,16 @@ def run_piano_processing_tests(image, camera_matrix, dist_coeffs,
   gray = cv.cvtColor(warped, cv.COLOR_BGR2GRAY)
   
   # Mask out ArUco marker regions by setting corners to white
-  cv.imshow('masked aruco markers', gray)
-  cv.waitKey(0)
-  cv.destroyAllWindows()
+
 
   # Apply median blur to reduce noise
-  med_image = cv.medianBlur(gray, 3)
-  cv.imshow('med_image', med_image)
-  cv.waitKey(0)
-  cv.destroyAllWindows()
+  # Pad first to avoid edge artifacts (especially important for ridge detection)
+  pad_size = 2
+  gray_padded = cv.copyMakeBorder(gray, pad_size, pad_size, pad_size, pad_size, 
+                                  cv.BORDER_REPLICATE)
+  med_image_padded = cv.medianBlur(gray_padded, 3)
+  med_image = med_image_padded[pad_size:-pad_size, pad_size:-pad_size]
+
   # med_image = cv.dilate(med_image, cv.getStructuringElement(cv.MORPH_RECT, (3,3)), iterations=1)
   # Switch-like behavior using if/elif on return_this
   # Compute adaptive binary if needed
@@ -225,17 +235,23 @@ def run_piano_processing_tests(image, camera_matrix, dist_coeffs,
     # Turn adaptive result into a boundary mask using morphological gradient
     inv = cv.bitwise_not(binary)
     grad = cv.morphologyEx(inv, cv.MORPH_GRADIENT, cv.getStructuringElement(cv.MORPH_RECT,(3,3)))
-    cv.imshow('grad result', grad)
-    cv.waitKey(0)
-    cv.destroyAllWindows()
     _, boundary = cv.threshold(grad, 1, 255, cv.THRESH_BINARY)
     return gray, boundary
 
   if return_this == 'ridge':
-    
     start_time = time.time()
+    
+    # Pad image to avoid edge artifacts in ridge detection
+    pad_size = 5
+    med_image_padded = cv.copyMakeBorder(med_image, pad_size, pad_size, pad_size, pad_size, 
+                                         cv.BORDER_REPLICATE)
+    
     ridge = cv.ximgproc.RidgeDetectionFilter_create()
-    ridge_img = ridge.getRidgeFilteredImage(med_image)
+    ridge_img_padded = ridge.getRidgeFilteredImage(med_image_padded)
+    
+    # Remove padding to get back to original size
+    ridge_img = ridge_img_padded[pad_size:-pad_size, pad_size:-pad_size]
+    
     ridge_time = time.time() - start_time
     print(f"Ridge detection: {ridge_time:.4f} seconds")
     _, ridge_bin = cv.threshold(ridge_img, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU)
@@ -387,20 +403,55 @@ def generate_piano_key_masks(gray_image, binary_image):
     }
 
 
-def crop_marker_regions(mask: np.ndarray, mask_margin_pct: float = 0.1) -> np.ndarray:
+def crop_marker_regions(mask: np.ndarray, mask_margin_pct: float = 0.1) -> Tuple[np.ndarray, int]:
     """
     This will crop the mask to remove the aruco markers
+    
+    Returns:
+        Tuple of (cropped_mask, y_offset) where y_offset is the pixels cropped from top
     """
     if mask.dtype != np.uint8:
         mask = mask.astype(np.uint8)
     h, w = mask.shape
     
-    # Calculate mask size for corners
+    # Calculate mask size for corners (only cropping top/bottom)
     mask_y = int(h * mask_margin_pct)
 
     cropped = mask[mask_y:h-mask_y, :].copy()
 
-    return cropped
+    return cropped, mask_y
+
+
+def map_coords_to_original(coords_or_contour, y_offset: int):
+    """
+    Map coordinates or contours from cropped image space back to original image space.
+    
+    Args:
+        coords_or_contour: Can be:
+            - Tuple (x, y) for a single point
+            - NumPy array with shape (N, 1, 2) for contour/polygon (from cv.findContours, cv.approxPolyDP)
+            - Tuple (x, y, w, h) for bbox
+        y_offset: Y offset to add (pixels cropped from top)
+    
+    Returns:
+        Same type as input but with y coordinates adjusted
+    """
+    if isinstance(coords_or_contour, tuple):
+        if len(coords_or_contour) == 2:
+            # Single point (x, y)
+            x, y = coords_or_contour
+            return (x, y + y_offset)
+        elif len(coords_or_contour) == 4:
+            # Bbox (x, y, w, h)
+            x, y, w, h = coords_or_contour
+            return (x, y + y_offset, w, h)
+    elif isinstance(coords_or_contour, np.ndarray):
+        # Contour or polygon array (N, 1, 2)
+        mapped = coords_or_contour.copy()
+        mapped[:, 0, 1] += y_offset  # Add offset to all y coordinates
+        return mapped
+    
+    return coords_or_contour
 
 
 def label_keys_from_boundary_mask(boundary_mask: np.ndarray,
@@ -422,10 +473,6 @@ def label_keys_from_boundary_mask(boundary_mask: np.ndarray,
     # 1) Thicken boundaries to close small gaps
     k = cv.getStructuringElement(cv.MORPH_RECT, (close_px, close_px))
     walls = cv.dilate(boundary_mask, k, iterations=1)
-
-    cv.imshow('walls', walls)
-    cv.waitKey(0)
-    cv.destroyAllWindows()
 
     # MORPH_OPEN erodes then dilates (thins walls) - REMOVE THIS if walls are already thin!
     # Only use MORPH_CLOSE if you need to close gaps (dilate then erode - thickens)
@@ -450,6 +497,7 @@ def label_keys_from_boundary_mask(boundary_mask: np.ndarray,
     # regions is the filled key regions (0/1 or 0/255)
     contours, _ = cv.findContours((regions*255).astype(np.uint8),
                                   cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+    
     countour_image = cv.cvtColor(boundary_mask.copy(), cv.COLOR_GRAY2BGR)
     contour_image = cv.drawContours(countour_image, contours, -1, (255, 0, 0), 2)
     cv.imshow('contour image', contour_image)
@@ -483,9 +531,11 @@ def label_keys_from_boundary_mask(boundary_mask: np.ndarray,
 
     for cnt in contours:
         area = cv.contourArea(cnt)
-        if area < 0.001 * regions.size or area > 0.1 * regions.size:  # filter specks and large areas
+        x, y, w, h = cv.boundingRect(cnt)
+
+        if area < 0.001 * regions.size or area > 0.1 * regions.size or w > 0.3*contour_image.shape[1] or h > 0.2*contour_image.shape[0]:  # filter specks and large areas
             continue
-        # The spatial moments 
+        # The spatial moments
         # are computed as:
         # m00 = sum(region)
         # m01 = sum(region * y)
@@ -497,7 +547,6 @@ def label_keys_from_boundary_mask(boundary_mask: np.ndarray,
             continue
         cx = int(M['m10'] / M['m00'])
         cy = int(M['m01'] / M['m00'])
-        x, y, w, h = cv.boundingRect(cnt)
         
         # Filter out square-like shapes (ArUco markers that might have escaped cropping)
         if is_square_like(cnt, (x, y, w, h)):
@@ -534,20 +583,35 @@ def label_keys_from_boundary_mask(boundary_mask: np.ndarray,
 
     
 
-def draw_labeled_keys(image:np.ndarray, labeled:List[dict]):
-  """Draw labeled keys on the image."""
+def draw_labeled_keys(image:np.ndarray, labeled:List[dict], y_offset: int = 0):
+  """Draw labeled keys on the image, mapping from cropped space to original if needed.
+  
+  Args:
+    image: Original (uncropped) image to draw on
+    labeled: List of key dictionaries from label_keys_from_boundary_mask
+    y_offset: Y offset to add if keys are from cropped image (default: 0)
+  """
   if len(image.shape) == 2:
     image = cv.cvtColor(image, cv.COLOR_GRAY2BGR)
-  for p_key in labeled:
-    x,y,w,h = p_key['bbox']
-    cx,cy = map(int, p_key['centroid'])
     
-    # points for rectangle
+  for p_key in labeled:
+    # Map bbox coordinates back to original image space
+    x, y, w, h = map_coords_to_original(p_key['bbox'], y_offset)
     pt1 = (int(x), int(y))
     pt2 = (int(x+w), int(y+h))
-    image = cv.circle(image, (cx, cy), 5, (255, 0, 127), -1)    
-    image = cv.putText(image, p_key['name'], (cx, cy), cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
-    image = cv.polylines(image, [p_key['poly']], isClosed=True, color=(0, 0, 255), thickness=2)
+    
+    # Map centroid back to original image space
+    cx, cy = map_coords_to_original(p_key['centroid'], y_offset)
+    
+    # Map polygon back to original image space
+    poly_original = map_coords_to_original(p_key['poly'], y_offset)
+    contour_original = map_coords_to_original(p_key['contour'], y_offset)
+
+    # Draw on original image
+    image = cv.circle(image, (cx, cy), 5, (255, 0, 127), -1)  # Magenta centroid
+    image = cv.putText(image, p_key['name'], (cx, cy-10), cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
+    image = cv.polylines(image, [poly_original], isClosed=True, color=(0, 0, 255), thickness=2)  # Red polygon
+    # image = cv.polylines(image, [contour_original], isClosed=True, color=(0, 255, 0), thickness=2)  # Green contour
   return image
 
 
