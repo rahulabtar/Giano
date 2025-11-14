@@ -100,7 +100,7 @@ def main():
     
 
 
-  cap = cv.VideoCapture(1)
+  cap = cv.VideoCapture(0)
 
   print("Put the piano in frame and take a picture to calibrate.")
   print("Press p to capture frame, c to confirm, or q to quit.")
@@ -131,7 +131,7 @@ def main():
 
   adaptive_mask, adaptive_y_offset = crop_marker_regions(adaptive_mask, mask_margin_pct=0.09)
 
-  _, binary_mask = run_piano_processing_tests(image, camera_matrix, dist_coeffs, return_this='binary')
+  _, binary_mask = run_piano_processing_tests(image, camera_matrix, dist_coeffs, return_this='binary_inverted')
   binary_mask, binary_y_offset = crop_marker_regions(binary_mask, mask_margin_pct=0.09)
   
 
@@ -151,9 +151,9 @@ def main():
   print("Press any key to close windows...")
   cv.destroyAllWindows()
 
-  adaptive_image = polygon_detector.transform_birdseye_to_image(adaptive_image, polygon_detector.polygon)
-  ridge_image = polygon_detector.transform_birdseye_to_image(ridge_image, polygon_detector.polygon)
-  binary_image = polygon_detector.transform_birdseye_to_image(binary_image, polygon_detector.polygon)
+  adaptive_image = polygon_detector.transform_birdseye_to_image(adaptive_image)
+  ridge_image = polygon_detector.transform_birdseye_to_image(ridge_image)
+  binary_image = polygon_detector.transform_birdseye_to_image(binary_image)
 
   
   cv.imshow("Adaptive real space", adaptive_image)
@@ -534,8 +534,8 @@ def label_keys_from_boundary_mask(boundary_mask: np.ndarray,
         area = cv.contourArea(cnt)
         x, y, w, h = cv.boundingRect(cnt)
 
-        if area < 0.001 * regions.size or area > 0.1 * regions.size or w > 0.3*contour_image.shape[1] or h > 0.2*contour_image.shape[0]:  # filter specks and large areas
-            continue
+        # if area < 0.001 * regions.size or area > 0.1 * regions.size or w > 0.3*contour_image.shape[1] or h > 0.2*contour_image.shape[0]:  # filter specks and large areas
+        #     continue
         # The spatial moments
         # are computed as:
         # m00 = sum(region)
@@ -550,8 +550,8 @@ def label_keys_from_boundary_mask(boundary_mask: np.ndarray,
         cy = int(M['m01'] / M['m00'])
         
         # Filter out square-like shapes (ArUco markers that might have escaped cropping)
-        if is_square_like(cnt, (x, y, w, h)):
-            continue
+        # if is_square_like(cnt, (x, y, w, h)):
+        #     continue
         
         # optional simplification (keeps notches)
         poly = cv.approxPolyDP(cnt, epsilon=0.01 * cv.arcLength(cnt, True), closed = True)
@@ -611,8 +611,8 @@ def draw_labeled_keys(image:np.ndarray, labeled:List[dict], y_offset: int = 0):
     # Draw on original image
     image = cv.circle(image, (cx, cy), 5, (255, 0, 127), -1)  # Magenta centroid
     image = cv.putText(image, p_key['name'], (cx, cy-10), cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
-    image = cv.polylines(image, [poly_original], isClosed=True, color=(0, 0, 255), thickness=2)  # Red polygon
-    # image = cv.polylines(image, [contour_original], isClosed=True, color=(0, 255, 0), thickness=2)  # Green contour
+    # image = cv.polylines(image, [poly_original], isClosed=True, color=(0, 0, 255), thickness=2)  # Red polygon
+    image = cv.drawContours(image, [contour_original], -1, (0, 255, 0), 2)  # Green contour
   return image
 
 

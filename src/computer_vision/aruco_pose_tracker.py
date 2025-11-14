@@ -2,12 +2,19 @@ import cv2 as cv
 import numpy as np
 import math
 from typing import List, Tuple, Optional
+from enum import IntEnum
+
+
+class TrackingMode(IntEnum):
+    """Mode for ArUco pose tracking."""
+    LIVE = 0     # Live video stream mode
+    STATIC = 1  # Single image/static mode
 
 
 class ArucoPoseTracker:
     """A system for detecting ArUco markers and tracking their 3D poses in live video."""
     
-    def __init__(self, dictionary_type=cv.aruco.DICT_6X6_250, marker_ids: list = None):
+    def __init__(self, camera_matrix: np.ndarray, dist_coeffs: np.ndarray, mode: TrackingMode = TrackingMode.LIVE, dictionary_type=cv.aruco.DICT_6X6_250, marker_ids: list = None):
         """
         Initialize the ArUco pose tracker.
         
@@ -15,6 +22,9 @@ class ArucoPoseTracker:
             dictionary_type: ArUco dictionary type (default: DICT_6X6_250)
             marker_ids: List of expected marker IDs (optional)
         """
+        self.camera_matrix = camera_matrix
+        self.dist_coeffs = dist_coeffs
+        self._mode = mode
         self.dictionary = cv.aruco.getPredefinedDictionary(dictionary_type)
         self.detector_params = cv.aruco.DetectorParameters()
         self.detector = cv.aruco.ArucoDetector(self.dictionary, self.detector_params)
@@ -31,6 +41,8 @@ class ArucoPoseTracker:
         self.filter_window_size = 5  # Number of samples to average
         self.pose_history = {}  # Dict mapping marker_id -> list of historical poses
     
+
+
     def configure_pose_filtering(self, enable_filtering: bool = True, 
                                adaptive_thresholds: bool = True, 
                                debug_output: bool = False,
@@ -113,16 +125,13 @@ class ArucoPoseTracker:
         
         return output_image
     
-    def estimate_pose_vecs(self, corners: List, ids: List, camera_matrix: np.ndarray, 
-                     dist_coeffs: np.ndarray, marker_size_meters: float) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
+    def estimate_pose_vecs(self, corners: List, ids: List, marker_size_meters: float) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
         """
         Estimate pose of detected markers. Returns rotation and translation vectors
         
         Args:
             corners: Detected marker corners
             ids: Detected marker IDs
-            camera_matrix: Camera intrinsic matrix
-            dist_coeffs: Camera distortion coefficients
             marker_size_meters: Real marker length in meters
             
         Returns:
@@ -147,8 +156,8 @@ class ArucoPoseTracker:
             success, rvec, tvec = cv.solvePnP(
                 obj_points, 
                 corner[0],  # corner is a list, we want the first (and only) element
-                camera_matrix, 
-                dist_coeffs
+                self.camera_matrix, 
+                self.dist_coeffs
             )
             
             if success:
@@ -345,16 +354,14 @@ class ArucoPoseTracker:
         
         return np.array([x, y, z])  # Roll, Pitch, Yaw in radians
     
-    def get_marker_poses(self, image: np.ndarray, camera_matrix: np.ndarray, 
-                        dist_coeffs: np.ndarray, marker_size_meters: float = 0.05, 
+    def get_marker_poses(self, image: np.ndarray, 
+                        marker_size_meters: float = 0.05, 
                         last_poses: Optional[list[dict] | dict[int, dict]] = None) -> list:
         """
         Get 3D pose of all detected markers.
         
         Args:
             image: Input image
-            camera_matrix: Camera calibration matrix
-            dist_coeffs: Distortion coefficients
             marker_size_meters: Size of markers in meters
             last_poses: Previous poses as either list of pose dicts or dict mapping marker_id -> pose
         
@@ -373,8 +380,7 @@ class ArucoPoseTracker:
                 prev_poses_dict = {pose['id']: pose for pose in last_poses}
 
         if ids is not None:
-            rvecs, tvecs = self.estimate_pose_vecs(corners, ids, camera_matrix, 
-                                                dist_coeffs, marker_size_meters)
+            rvecs, tvecs = self.estimate_pose_vecs(corners, ids, marker_size_meters)
             
             poses_dict = {}
             for i, marker_id in enumerate(ids.flatten()):
@@ -437,7 +443,10 @@ class ArucoPoseTracker:
                 
             # Return as list for backward compatibility, but store internally as dict
             return list(poses_dict.values())
-        raise ValueError("No markers found in image")
+        if self._mode == TrackingMode.STATIC:
+          raise ValueError("No markers found in image")
+        else:
+          return []
     
     def calculate_pose_similarity(self, current_pose: dict, previous_pose: dict, 
                                  adaptive_thresholds: bool = True) -> dict:
