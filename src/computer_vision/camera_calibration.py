@@ -2,12 +2,19 @@ import cv2 as cv
 import numpy as np
 import glob
 import os
+import sys
 from datetime import datetime
 
-PATTERNS = {"chessboard_9x6": "https://github.com/opencv/opencv/blob/master/doc/pattern.png"}
- 
+# Add project root to Python path for direct execution
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-def calibrate_camera():
+from src.core.constants import ASSETS_DIR
+
+PATTERNS = {"chessboard_9x6": "https://github.com/opencv/opencv/blob/master/doc/pattern.png"}
+CALIBRATION_DIR = os.path.join(ASSETS_DIR, "calibration")
+CALIBRATION_IMAGE_DIR = os.path.join(ASSETS_DIR, "calibration_images")
+
+def calibrate_camera(user_filename:str):
     """
     Calibrate camera using chessboard pattern.
     Print out a chessboard pattern and take 10-20 photos from different angles.
@@ -24,7 +31,7 @@ def calibrate_camera():
     imgpoints = []  # 2D points in image plane
     
     # Take photos with your camera first, then load them
-    images = glob.glob('calibration_images/*.jpg')  # Put your calibration photos here
+    images = glob.glob(os.path.join(CALIBRATION_IMAGE_DIR, '*.jpg'))  # Put your calibration photos here
     
     if not images:
         print("No calibration images found! Take 15-20 photos of a chessboard pattern.")
@@ -64,16 +71,16 @@ def calibrate_camera():
     print(f"Reprojection Error: {ret}")
     
     # Save calibration data
-    np.savez('camera_calibration.npz', 
+    np.savez(os.path.join(CALIBRATION_IMAGE_DIR, user_filename, 'camera_calibration.npz'), 
              camera_matrix=camera_matrix, 
              dist_coeffs=dist_coeffs)
     
     return camera_matrix, dist_coeffs
 
-def load_camera_calibration():
+def load_camera_calibration(user_filename:str):
     """Load previously saved calibration data."""
     try:
-        data = np.load('camera_calibration.npz')
+        data = np.load(os.path.join(CALIBRATION_IMAGE_DIR, user_filename, 'camera_calibration.npz'))
         return data['camera_matrix'], data['dist_coeffs']
     except FileNotFoundError:
         print("No calibration file found. Run calibrate_camera() first.")
@@ -87,11 +94,11 @@ def take_calibration_photos(user_filename:str, n_photos:int):
 
     # Create output directory
     import os
-    os.makedirs('calibration_images', exist_ok=True)
+    os.makedirs(os.path.join(CALIBRATION_DIR, "calibration_images", user_filename), exist_ok=True)
 
     # Calibration setup
     CHECKERBOARD = (9, 6)
-    square_size_mm = 25  # Assuming 25mm squares
+    square_size_mm = 20  # Assuming 20mm squares
     
     # Prepare object points (3D points in real world space)
     objp = np.zeros((CHECKERBOARD[0] * CHECKERBOARD[1], 3), np.float32)
@@ -237,18 +244,18 @@ def take_calibration_photos(user_filename:str, n_photos:int):
             print(f"Distortion Coefficients:\n{dist_coeffs.flatten()}")
             
             # Save final calibration
-            np.savez(f'camera_calibration_{user_filename}.npz', 
+            np.savez(os.path.join(CALIBRATION_DIR, f'camera_calibration_{user_filename}.npz'), 
                      camera_matrix=camera_matrix, 
                      dist_coeffs=dist_coeffs,
                      reprojection_error=ret_final,
                      square_size_mm=square_size_mm,
                      num_images=len(objpoints))
             
-            if os.path.isfile("camera_calibration_live.npz"):
-                os.remove("camera_calibration_live.npz")
+            if os.path.isfile(os.path.join(CALIBRATION_DIR, f'camera_calibration_live.npz')):
+                os.remove(os.path.join(CALIBRATION_DIR, f'camera_calibration_live.npz'))
                 print("Removed temp live calibration file\n")
 
-            print(f"\n✓ Final calibration saved as 'camera_calibration.npz'")
+            print(f"\n✓ Final calibration saved as 'camera_calibration_{user_filename}.npz'")
             return camera_matrix, dist_coeffs
             
         except Exception as e:
@@ -267,28 +274,27 @@ if __name__ == "__main__":
     print("3. Load existing calibration")
     
     choice = input("Choose option (1-3): ").strip()
-    
+    filename = input("Type filename for calibration: ")
+
     if choice == "1":
         n_photos = int(input("# of photos to take: "))
-        filename = input("Type filename for calibration: ")
         camera_matrix, dist_coeffs = take_calibration_photos(user_filename=filename, n_photos=n_photos)
         if camera_matrix is not None:
             print("✓ Live calibration completed successfully!")
         
     elif choice == "2":
-        camera_matrix, dist_coeffs = calibrate_camera()
+        camera_matrix, dist_coeffs = calibrate_camera(user_filename=filename)
         if camera_matrix is not None:
             print("✓ Calibration from existing photos completed!")
             
     elif choice == "3":
-        camera_matrix, dist_coeffs = load_camera_calibration()
+        camera_matrix, dist_coeffs = load_camera_calibration(user_filename=filename)
         if camera_matrix is not None:
-            data = np.load('camera_calibration.npz')
+            data = np.load(os.path.join(CALIBRATION_IMAGE_DIR, filename, 'camera_calibration.npz'))
             print(f"✓ Loaded calibration:")
             print(f"  Reprojection Error: {data['reprojection_error']:.4f} pixels")
             print(f"  Images used: {data['num_images']}")
             print(f"✓ Ready to use for ArUco pose estimation!")
             
     else:
-        print("Invalid choice, running live calibration...")
-        take_calibration_photos()
+        print("Invalid choice! Please start over.")

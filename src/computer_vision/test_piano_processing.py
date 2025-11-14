@@ -90,8 +90,9 @@ def calibration_loop(cap:cv.VideoCapture) -> tuple:
 
 def main():
   # Create output directory with timestamp
+  timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
   if SAVE_PICTURES:
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_dir = os.path.join(os.path.dirname(__file__), "calibration_output", f"calibration_{timestamp}")
     os.makedirs(output_dir, exist_ok=True)
     print(f"Saving calibration images to: {output_dir}")
@@ -123,54 +124,37 @@ def main():
   print("Image confirmed! Running piano processing tests...")
   
   # Run adaptive and ridge tests on the confirmed image
-  gray, adaptive_mask = run_piano_processing_tests(image, camera_matrix, dist_coeffs, return_this='adaptive')
-  med_adaptive_mask = cv.medianBlur(adaptive_mask, 3)
-  cv.imshow('med_adaptive_mask', med_adaptive_mask)
-  cv.waitKey(0)
-  cv.destroyAllWindows()
 
-  adaptive_mask, adaptive_y_offset = crop_marker_regions(adaptive_mask, mask_margin_pct=0.09)
-
-  _, binary_mask = run_piano_processing_tests(image, camera_matrix, dist_coeffs, return_this='binary_inverted')
-  binary_mask, binary_y_offset = crop_marker_regions(binary_mask, mask_margin_pct=0.09)
-  
 
   gray, ridge_mask = run_piano_processing_tests(image, camera_matrix, dist_coeffs, return_this='ridge')
   ridge_mask, ridge_y_offset = crop_marker_regions(ridge_mask, mask_margin_pct=0.09)
 
-  labeled_adaptive = label_keys_from_boundary_mask(adaptive_mask,48)
-  labeled_ridge = label_keys_from_boundary_mask(ridge_mask,48)
-  labeled_binary = label_keys_from_boundary_mask(binary_mask,48)
-  
+  labeled_ridge = label_keys_from_boundary_mask(ridge_mask,48)  
 
-  adaptive_image = draw_labeled_keys(gray, labeled_adaptive, y_offset=adaptive_y_offset)
-  ridge_image = draw_labeled_keys(gray, labeled_ridge, y_offset=ridge_y_offset)
-  binary_image = draw_labeled_keys(gray, labeled_binary, y_offset=binary_y_offset)
- 
+  ridge_image_contours = draw_labeled_keys(gray, labeled_ridge, y_offset=ridge_y_offset, show_contours=True)
+  ridge_image_polygons = draw_labeled_keys(gray, labeled_ridge, y_offset=ridge_y_offset, show_polygons=True)
 
   print("Press any key to close windows...")
   cv.destroyAllWindows()
 
-  adaptive_image = polygon_detector.transform_birdseye_to_image(adaptive_image)
-  ridge_image = polygon_detector.transform_birdseye_to_image(ridge_image)
-  binary_image = polygon_detector.transform_birdseye_to_image(binary_image)
+  ridge_image_contours = polygon_detector.transform_birdseye_to_image(ridge_image_contours)
+  ridge_image_polygons = polygon_detector.transform_birdseye_to_image(ridge_image_polygons)
 
   
-  cv.imshow("Adaptive real space", adaptive_image)
-  cv.imshow("Ridge real space", ridge_image)
-  cv.imshow("Binary real space", binary_image)
+  cv.imshow("Ridge real space contours", ridge_image_contours)
+  cv.imshow("Ridge real space polygons", ridge_image_polygons)
   print("Press any key to close windows...")
   cv.waitKey(0)
-
-  
+ 
   cap.release()
   cv.destroyAllWindows()
   
 
   output_dir = os.path.join(os.path.dirname(__file__), "calibration_output", f"final_masks")
 
-  cv.imwrite(os.path.join(output_dir, "adaptive_mask.jpg"), adaptive_mask)
-  cv.imwrite(os.path.join(output_dir, "ridge_mask.jpg"), ridge_mask)
+  cv.imwrite(os.path.join(output_dir, f"ridge_mask_{timestamp}.jpg"), ridge_mask)
+  cv.imwrite(os.path.join(output_dir, f"ridge_image_contours_{timestamp}.jpg"), ridge_image_contours)
+  cv.imwrite(os.path.join(output_dir, f"ridge_image_polygons_{timestamp}.jpg"), ridge_image_polygons)
   return 0
 
 
@@ -459,138 +443,206 @@ def label_keys_from_boundary_mask(boundary_mask: np.ndarray,
                                   start_midi: int,
                                   expected_keys: int | None = None,
                                   close_px: int = 3) -> List[Dict]:
-    """
-    boundary_mask: uint8 image with aruco markers cropped out, 255 at key boundaries, 0 elsewhere
-    start_midi: MIDI note of the left-most key in view (e.g., 21 for A0, 48 for C3)
-    expected_keys: optional sanity check on count
-    close_px: thickness to ensure separators are closed
+  """
+  boundary_mask: uint8 image with aruco markers cropped out, 255 at key boundaries, 0 elsewhere
+  start_midi: MIDI note of the left-most key in view (e.g., 21 for A0, 48 for C3)
+  expected_keys: optional sanity check on count
+  close_px: thickness to ensure separators are closed
 
-    returns list of dicts: [{name, midi, is_black, bbox, contour, centroid}, ...]
-    """
-    output_dir = os.path.join(os.path.dirname(__file__), "calibration_output", f"final_masks")
+  returns list of dicts: [{name, midi, is_black, bbox, contour, centroid}, ...]
+  """
+  output_dir = os.path.join(os.path.dirname(__file__), "calibration_output", f"final_masks")
 
-    h, w = boundary_mask.shape
+  h, w = boundary_mask.shape
 
-    # 1) Thicken boundaries to close small gaps
-    k = cv.getStructuringElement(cv.MORPH_RECT, (close_px, close_px))
-    walls = cv.dilate(boundary_mask, k, iterations=1)
-
-    # MORPH_OPEN erodes then dilates (thins walls) - REMOVE THIS if walls are already thin!
-    # Only use MORPH_CLOSE if you need to close gaps (dilate then erode - thickens)
-    # k_close = cv.getStructuringElement(cv.MORPH_RECT, (3,3))
-    # walls = cv.morphologyEx(walls, cv.MORPH_OPEN, k_close)  # REMOVED - was eroding too much
-
-    # 2) Invert to get key regions as 1s
-    regions = cv.bitwise_not(walls)
-    regions = (regions > 0).astype(np.uint8)
+  # Remove small noise using connected components instead of opening
+  # Opening breaks connections, so we filter by area instead
+  # This preserves line segments while removing isolated noise pixels
+  num_labels, labels, stats, centroids = cv.connectedComponentsWithStats(boundary_mask, connectivity=8)
   
-    # 3) Dilate regions slightly to recover area lost during wall dilation
-    # This makes contours trace closer to actual key boundaries (reduces "erosion" effect)
-    if close_px > 1:  # Only if we dilated walls significantly
-        # Slightly grow the key regions back (undo some of the wall dilation)
-        dilate_kernel = cv.getStructuringElement(cv.MORPH_RECT, (close_px-1, close_px-1))
-        regions = cv.dilate(regions, dilate_kernel, iterations=1)
+  # Filter out small noise regions (keep only regions above threshold)
+  # Adjust min_area based on your noise level - smaller values keep more, larger removes more
+  min_area = 100  # Minimum pixels to keep (removes isolated 1-2 pixel noise)
+  walls_cleaned = np.zeros_like(boundary_mask)
+  
+  for label_id in range(1, num_labels):  # Skip background (label 0)
+    area = stats[label_id, cv.CC_STAT_AREA]
+    if area >= min_area:
+      # Keep this region
+      walls_cleaned[labels == label_id] = 255
 
+
+  # Now proceed with closing operations to connect fragments
+  # Skip opening - it breaks connections. Use closing to connect instead.
+  walls_horizontal = walls_cleaned.copy()
+
+  # 1) Vertical closing: connects broken vertical boundary segments
+  # Use a tall vertical line kernel to connect vertical gaps (most important for piano keys)
+  vertical_kernel = cv.getStructuringElement(cv.MORPH_RECT, (1, 5))  # 1 wide, 10 tall
+  walls_vertical_closed = cv.morphologyEx(walls_horizontal, cv.MORPH_CLOSE, vertical_kernel)
+  
+  # Apply multiple iterations for better connection of stubborn gaps
+  walls_vertical_closed = cv.morphologyEx(walls_vertical_closed, cv.MORPH_CLOSE, vertical_kernel)
+  
+  cv.imshow('walls_vertical_closed', walls_vertical_closed)
+  cv.waitKey(0)
+  cv.destroyAllWindows()
+
+  # 2) Horizontal closing: connects broken horizontal boundary segments
+  # Use a WIDE horizontal line kernel to connect horizontal gaps (top/bottom edges)
+  # CRITICAL: Increased from 3 to 60 - the previous kernel was way too small!
+  horizontal_kernel = cv.getStructuringElement(cv.MORPH_RECT, (5, 1))  # 60 wide, 1 tall
+  walls_connected = cv.morphologyEx(walls_vertical_closed, cv.MORPH_CLOSE, horizontal_kernel)
+  
+  # Apply multiple iterations for better connection
+  walls_connected = cv.morphologyEx(walls_connected, cv.MORPH_CLOSE, horizontal_kernel)
+  
+  cv.imshow('walls_vertical_and_horizontal', walls_connected)
+  cv.waitKey(0)
+  cv.destroyAllWindows()
+
+  # 3) General closing: connects any remaining nearby fragments
+  # This catches diagonal connections and general gaps
+  # close_kernel = cv.getStructuringElement(cv.MORPH_RECT, (5, 5))
+  # walls_connected = cv.morphologyEx(walls_connected, cv.MORPH_CLOSE, close_kernel)
+  
+  # cv.imshow('walls_connected_and_square_kernel', walls_connected)
+  # cv.waitKey(0)
+  # cv.destroyAllWindows()
 
   
-    # 3) Connected components
-    # num, labels, stats, cents = cv.connectedComponentsWithStats(regions, connectivity=4, ltype=cv.CV_32S)
-    # regions is the filled key regions (0/1 or 0/255)
-    contours, _ = cv.findContours((regions*255).astype(np.uint8),
-                                  cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
-    
-    countour_image = cv.cvtColor(boundary_mask.copy(), cv.COLOR_GRAY2BGR)
-    contour_image = cv.drawContours(countour_image, contours, -1, (255, 0, 0), 2)
-    cv.imshow('contour image', contour_image)
-    cv.waitKey(0)
-    cv.destroyAllWindows()
+ 
+  
 
-    keys = []
-    NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B']
 
-    def name_from_midi(m: int) -> Tuple[str,bool]:
-      n = NAMES[m % 12]
-      octave = (m // 12) - 1
-      return f"{n}{octave}", ('#' in n)
+  # 4) Invert to get key regions as 1s
+  regions = cv.bitwise_not(walls_connected)
+  regions = (regions > 0).astype(np.uint8)
+  
+  # 5) Opening on key regions: removes small artifacts inside keys (white specks)
+  # This cleans up noise that appears as small white dots in the black key regions
+  artifact_removal_kernel = cv.getStructuringElement(cv.MORPH_RECT, (3, 3))
+  regions = cv.morphologyEx(regions, cv.MORPH_OPEN, artifact_removal_kernel, iterations=1)
+  
 
-    def is_square_like(cnt, bbox):
-        """Check if contour is square-like (ArUco markers are squares)."""
-        x, y, w, h = bbox
-        aspect = w / max(h, 1)
-        # Square-like: aspect ratio between 0.7 and 1.4
-        is_square = 0.7 <= aspect <= 1.4
-        
-        # Also check rectangularity - squares have high extent and solidity
-        area = cv.contourArea(cnt)
-        bbox_area = w * h
-        extent = area / bbox_area if bbox_area > 0 else 0
-        
-        # ArUco markers are typically very rectangular (high extent > 0.8)
-        very_rectangular = extent > 0.8
-        
-        return is_square and very_rectangular and area < 0.05 * regions.size  # Small-medium size
+  # 6) Slight dilation to recover area lost during wall dilation
+  # This makes contours trace closer to actual key boundaries
+  if close_px > 1:
+    dilate_kernel = cv.getStructuringElement(cv.MORPH_RECT, (close_px-1, close_px-1))
+    regions = cv.dilate(regions, dilate_kernel, iterations=1)
 
-    for cnt in contours:
-        area = cv.contourArea(cnt)
-        x, y, w, h = cv.boundingRect(cnt)
 
-        # if area < 0.001 * regions.size or area > 0.1 * regions.size or w > 0.3*contour_image.shape[1] or h > 0.2*contour_image.shape[0]:  # filter specks and large areas
-        #     continue
-        # The spatial moments
-        # are computed as:
-        # m00 = sum(region)
-        # m01 = sum(region * y)
-        # m10 = sum(region * x)
-        # m11 = sum(region * x * y)
 
-        M = cv.moments(cnt)
-        if M['m00'] == 0:
-            continue
-        cx = int(M['m10'] / M['m00'])
-        cy = int(M['m01'] / M['m00'])
-        
-        # Filter out square-like shapes (ArUco markers that might have escaped cropping)
-        # if is_square_like(cnt, (x, y, w, h)):
-        #     continue
-        
-        # optional simplification (keeps notches)
-        poly = cv.approxPolyDP(cnt, epsilon=0.01 * cv.arcLength(cnt, True), closed = True)
+  # 3) Connected components
+  # num, labels, stats, cents = cv.connectedComponentsWithStats(regions, connectivity=4, ltype=cv.CV_32S)
+  # regions is the filled key regions (0/1 or 0/255)
+  contours, _ = cv.findContours((regions*255).astype(np.uint8),
+                                cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+  
+  countour_image = cv.cvtColor(boundary_mask.copy(), cv.COLOR_GRAY2BGR)
+  contour_image = cv.drawContours(countour_image, contours, -1, (255, 0, 0), 2)
+  cv.imshow('contour image', contour_image)
+  cv.waitKey(0)
+  cv.destroyAllWindows()
 
-        keys.append({
-            'contour': cnt,        # full contour
-            'poly': poly,          # simplified polygon
-            'centroid': (cx, cy),
-            'bbox': (x, y, w, h),
-            'height': h,
-            'y': y,
-            'area': area
-        }) 
-    # Sort keys by x (horizontal start of boundingRect)
-    keys.sort(key=lambda k: k['bbox'][0])
-    print(keys)
-    for k in keys:
-      midi = start_midi + keys.index(k)
-      name, is_black_from_midi = name_from_midi(midi)
-      k['name'] = name
-      k['midi_note'] = midi
-      k['is_black'] = is_black_from_midi
-    
-    if not keys:
-      print("No keys found")
-      return []
-    return keys
-        
+  keys = []
+  NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B']
+
+  def name_from_midi(m: int) -> Tuple[str,bool]:
+    n = NAMES[m % 12]
+    octave = (m // 12) - 1
+    return f"{n}{octave}", ('#' in n)
+
+  def is_square_like(cnt, bbox):
+      """Check if contour has wide aspect ratio."""
+      x, y, w, h = bbox
+      aspect = w / max(h, 1)
+      # Square-like: aspect ratio between 0.7 and 1.4
+      if aspect > 0.5:
+        return True
+      return False
+
+
+  for cnt in contours:
+      area = cv.contourArea(cnt)
+      x, y, w, h = cv.boundingRect(cnt)
+
+      # Filter out small artifacts and overly large regions
+      # Small artifacts: less than 0.1% of image area (noise, specks)
+      # Large regions: more than 40% of image area (likely errors)
+      min_area = 0.01 * boundary_mask.size  # Minimum area threshold
+      max_area = 0.4 * boundary_mask.size    # Maximum area threshold
+      
+      if area < min_area or area > max_area:
+          continue
+      
+      # Also filter by aspect ratio to catch elongated artifacts
+      aspect = w / h if h > 0 else 0
+      if aspect > 0.5:
+          continue
+
+      # The spatial moments
+      # are computed as:
+      # m00 = sum(region)
+      # m01 = sum(region * y)
+      # m10 = sum(region * x)
+      # m11 = sum(region * x * y)
+
+      M = cv.moments(cnt)
+      if M['m00'] == 0:
+          continue
+      cx = int(M['m10'] / M['m00'])
+      cy = int(M['m01'] / M['m00'])
+      
+      # Filter out square-like shapes (ArUco markers that might have escaped cropping)
+      # if is_square_like(cnt, (x, y, w, h)):
+      #     continue
+      
+      # Polygon approximation - smaller epsilon = closer fit to contour
+      # epsilon controls max distance between original curve and approximation
+      # 0.001 = 0.1% of perimeter (very close), 0.005 = 0.5% (close), 0.01 = 1% (moderate)
+      poly = cv.approxPolyDP(cnt, epsilon=0.005 * cv.arcLength(cnt, True), closed=True)
+
+      keys.append({
+          'contour': cnt,        # full contour
+          'poly': poly,          # simplified polygon
+          'centroid': (cx, cy),
+          'bbox': (x, y, w, h),
+          'height': h,
+          'y': y,
+          'area': area
+      }) 
+  # Sort keys by x (horizontal start of boundingRect)
+  keys.sort(key=lambda k: k['bbox'][0])
+  for k in keys:
+    midi = start_midi + keys.index(k)
+    name, is_black_from_midi = name_from_midi(midi)
+    k['name'] = name
+    k['midi_note'] = midi
+    k['is_black'] = is_black_from_midi
+  
+  if not keys:
+    print("No keys found")
+    return []
+  
+  if expected_keys is not None and not np.isclose(len(keys), expected_keys, atol=2):
+    print(f"Expected {expected_keys} keys but found {len(keys)}")
+    return []
+  return keys
+      
    
 
     
 
-def draw_labeled_keys(image:np.ndarray, labeled:List[dict], y_offset: int = 0):
+def draw_labeled_keys(image:np.ndarray, labeled:List[dict], y_offset: int = 0, show_contours: bool = False, show_polygons: bool = True):
   """Draw labeled keys on the image, mapping from cropped space to original if needed.
   
   Args:
     image: Original (uncropped) image to draw on
     labeled: List of key dictionaries from label_keys_from_boundary_mask
     y_offset: Y offset to add if keys are from cropped image (default: 0)
+    show_contours: If True, draw contours on the image
+    show_polygons: If True, draw polygons on the image
   """
   if len(image.shape) == 2:
     image = cv.cvtColor(image, cv.COLOR_GRAY2BGR)
@@ -611,8 +663,10 @@ def draw_labeled_keys(image:np.ndarray, labeled:List[dict], y_offset: int = 0):
     # Draw on original image
     image = cv.circle(image, (cx, cy), 5, (255, 0, 127), -1)  # Magenta centroid
     image = cv.putText(image, p_key['name'], (cx, cy-10), cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
-    # image = cv.polylines(image, [poly_original], isClosed=True, color=(0, 0, 255), thickness=2)  # Red polygon
-    image = cv.drawContours(image, [contour_original], -1, (0, 255, 0), 2)  # Green contour
+    if show_polygons:
+      image = cv.polylines(image, [poly_original], isClosed=True, color=(139, 0, 139), thickness=2)  # Dark pink (BGR)
+    if show_contours:
+      image = cv.drawContours(image, [contour_original], -1, (0, 255, 0) if p_key['is_black'] else (0, 0, 255), 2)  # Green or Red contour
   return image
 
 
@@ -628,27 +682,26 @@ def save_processing_results(image, warped, gray, binary, binary_inverted,
   cv.imwrite(os.path.join(output_dir, "03_grayscale.jpg"), gray)
   cv.imwrite(os.path.join(output_dir, "04_adaptive_binary.jpg"), binary)
   cv.imwrite(os.path.join(output_dir, "05_binary_inverted.jpg"), binary_inverted)
-      
+  
   # Save edge detection results
   cv.imwrite(os.path.join(output_dir, "16_ridge_detection.jpg"), ridge_image)
-      
-      # Save key masks
+  
+  # Save key masks
   cv.imwrite(os.path.join(output_dir, "17_binary_filled.jpg"), key_masks['binary_filled'])
   cv.imwrite(os.path.join(output_dir, "19_contour_mask.jpg"), key_masks['contour_mask'])
   cv.imwrite(os.path.join(output_dir, "20_template_mask.jpg"), key_masks['template_mask'])
   cv.imwrite(os.path.join(output_dir, "21_combined_mask.jpg"), key_masks['combined_mask'])
   cv.imwrite(os.path.join(output_dir, "22_final_mask.jpg"), key_masks['final_mask'])
 
-      
-      # Save adaptive threshold results
+  # Save adaptive threshold results
   for name, mask in key_masks['adaptive_masks'].items():
     cv.imwrite(os.path.join(output_dir, f"25_{name}.jpg"), mask)
-    
+  
   save_time = time.time() - start_time
   print(f"Image saving operations: {save_time:.4f} seconds")
   print(f"Saved calibration images to {output_dir}")
   print(f"Detected {key_masks['num_keys_detected']} potential piano keys")
-  
+    
 
 def display_processing_results(warped, binary_inverted, 
                              ridge_image, key_masks):
@@ -658,15 +711,14 @@ def display_processing_results(warped, binary_inverted,
   cv.imshow("Warped (Bird's Eye)", warped)
   cv.imshow("Binary Inverted", binary_inverted)
   cv.imshow("Ridge", ridge_image)
-    
-    # Display key masks
+  
+  # Display key masks
   cv.imshow("Mask Binary Filled", key_masks['binary_filled'])
   cv.imshow("Mask Contour Mask", key_masks['contour_mask'])
   cv.imshow("Mask Combined Mask", key_masks['combined_mask'])
   cv.imshow("Mask Final Mask", key_masks['final_mask'])
   cv.imshow("template Mask", key_masks['template_mask'])
 
-    
   print(f"\nKey Detection Results:")
   print(f"Number of keys detected: {key_masks['num_keys_detected']}")
   print(f"Expected keys on piano: ~52 white keys + ~36 black keys = ~88 total")
