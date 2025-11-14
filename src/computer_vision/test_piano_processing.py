@@ -19,6 +19,7 @@ SAVE_PICTURES = False
 LAST_MARKER_LIST_2D = None
   
 try:
+  print(f"Loading calibration file: {CAMERA_CALIBRATION_PATH}")
   calib_npz = np.load(CAMERA_CALIBRATION_PATH)
       
 except(OSError): 
@@ -29,7 +30,7 @@ except:
 camera_matrix = calib_npz["camera_matrix"]
 dist_coeffs = calib_npz["dist_coeffs"]
 
-pose_tracker = ArucoPoseTracker(marker_ids=MARKER_IDS)
+pose_tracker = ArucoPoseTracker(camera_matrix, dist_coeffs, marker_ids=MARKER_IDS)
 pose_tracker.configure_pose_filtering(
   enable_filtering=False,
   adaptive_thresholds=False,
@@ -99,7 +100,7 @@ def main():
     
 
 
-  cap = cv.VideoCapture(0)
+  cap = cv.VideoCapture(1)
 
   print("Put the piano in frame and take a picture to calibrate.")
   print("Press p to capture frame, c to confirm, or q to quit.")
@@ -150,9 +151,9 @@ def main():
   print("Press any key to close windows...")
   cv.destroyAllWindows()
 
-  adaptive_image = finger_tracker.transform_birdseye_to_image(adaptive_image, polygon_detector.polygon)
-  ridge_image = finger_tracker.transform_birdseye_to_image(ridge_image, polygon_detector.polygon)
-  binary_image = finger_tracker.transform_birdseye_to_image(binary_image, polygon_detector.polygon)
+  adaptive_image = polygon_detector.transform_birdseye_to_image(adaptive_image, polygon_detector.polygon)
+  ridge_image = polygon_detector.transform_birdseye_to_image(ridge_image, polygon_detector.polygon)
+  binary_image = polygon_detector.transform_birdseye_to_image(binary_image, polygon_detector.polygon)
 
   
   cv.imshow("Adaptive real space", adaptive_image)
@@ -179,8 +180,8 @@ def run_piano_processing_tests(image, camera_matrix, dist_coeffs,
   """Run all piano processing tests on the confirmed image."""
   
   # Get AruCo marker poses and polygon
-  poses = pose_tracker.get_marker_poses(image, camera_matrix, dist_coeffs, MARKER_SIZE*IN_TO_METERS)
-  marker_list_2d = polygon_detector.get_marker_polygon(MARKER_IDS, poses, store_marker_list=True)
+  poses = pose_tracker.get_marker_poses(image, MARKER_SIZE*IN_TO_METERS)
+  marker_list_2d = polygon_detector.get_marker_polygon(MARKER_IDS, poses, store_polygon=True)
   global LAST_MARKER_LIST_2D
   LAST_MARKER_LIST_2D = marker_list_2d
 
@@ -196,7 +197,7 @@ def run_piano_processing_tests(image, camera_matrix, dist_coeffs,
   start_time = time.time()
   
   # Transform to bird's eye view
-  warped = finger_tracker.transform_image_to_birdseye(image, marker_list_2d)
+  warped = polygon_detector.transform_image_to_birdseye(image, marker_list_2d)
   transform_time = time.time() - start_time
   print(f"Image transformation (birdseye): {transform_time:.4f} seconds")
 
@@ -627,27 +628,27 @@ def save_processing_results(image, warped, gray, binary, binary_inverted,
   cv.imwrite(os.path.join(output_dir, "03_grayscale.jpg"), gray)
   cv.imwrite(os.path.join(output_dir, "04_adaptive_binary.jpg"), binary)
   cv.imwrite(os.path.join(output_dir, "05_binary_inverted.jpg"), binary_inverted)
-  
+      
   # Save edge detection results
   cv.imwrite(os.path.join(output_dir, "16_ridge_detection.jpg"), ridge_image)
-  
-  # Save key masks
+      
+      # Save key masks
   cv.imwrite(os.path.join(output_dir, "17_binary_filled.jpg"), key_masks['binary_filled'])
   cv.imwrite(os.path.join(output_dir, "19_contour_mask.jpg"), key_masks['contour_mask'])
   cv.imwrite(os.path.join(output_dir, "20_template_mask.jpg"), key_masks['template_mask'])
   cv.imwrite(os.path.join(output_dir, "21_combined_mask.jpg"), key_masks['combined_mask'])
   cv.imwrite(os.path.join(output_dir, "22_final_mask.jpg"), key_masks['final_mask'])
 
-  
-  # Save adaptive threshold results
+      
+      # Save adaptive threshold results
   for name, mask in key_masks['adaptive_masks'].items():
     cv.imwrite(os.path.join(output_dir, f"25_{name}.jpg"), mask)
-  
+    
   save_time = time.time() - start_time
   print(f"Image saving operations: {save_time:.4f} seconds")
   print(f"Saved calibration images to {output_dir}")
   print(f"Detected {key_masks['num_keys_detected']} potential piano keys")
-
+  
 
 def display_processing_results(warped, binary_inverted, 
                              ridge_image, key_masks):
@@ -657,15 +658,15 @@ def display_processing_results(warped, binary_inverted,
   cv.imshow("Warped (Bird's Eye)", warped)
   cv.imshow("Binary Inverted", binary_inverted)
   cv.imshow("Ridge", ridge_image)
-  
-  # Display key masks
+    
+    # Display key masks
   cv.imshow("Mask Binary Filled", key_masks['binary_filled'])
   cv.imshow("Mask Contour Mask", key_masks['contour_mask'])
   cv.imshow("Mask Combined Mask", key_masks['combined_mask'])
   cv.imshow("Mask Final Mask", key_masks['final_mask'])
   cv.imshow("template Mask", key_masks['template_mask'])
 
-  
+    
   print(f"\nKey Detection Results:")
   print(f"Number of keys detected: {key_masks['num_keys_detected']}")
   print(f"Expected keys on piano: ~52 white keys + ~36 black keys = ~88 total")
