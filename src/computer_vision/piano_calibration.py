@@ -59,6 +59,8 @@ class PianoCalibration:
         corners, ids, rejected = self.pose_tracker.detect_markers(image)
         if len(corners) > 0:
             detected_markers_image = self.pose_tracker.draw_detected_markers(image, corners, ids)
+        else:
+            detected_markers_image = image.copy()
         if not success: 
           print("Error reading from camera")
           return (2, None)
@@ -351,7 +353,8 @@ class PianoCalibration:
               'area': area
           }) 
       # Sort keys by x (horizontal start of boundingRect)
-      keys.sort(key=lambda k: k['bbox'][0])
+      # TODO: Make this more robust by requesting orientation of piano
+      keys.sort(key=lambda k: k['bbox'][0], reverse=True)
       for k in keys:
         midi = start_midi + keys.index(k)
         name, is_black_from_midi = name_from_midi(midi)
@@ -577,11 +580,12 @@ class PianoCalibration:
         # Draw labeled keys on grayscale image
         annotated_image = self.draw_labeled_keys(image, labeled_keys, y_offset)
         # Show mask overlay for user confirmation
+        
+        print("\n Keyboard detected! Review the overlay:")
 
         print("  - Press 'c' to confirm and continue")
         print("  - Press 'q' to quit")
         print("  - Press 'r' to retry")
-        print("\n Keyboard detected! Review the overlay:")
         
         cv.imshow('found piano', annotated_image)
         cv.waitKey(0)
@@ -616,9 +620,9 @@ def main():
   piano_calibrator = PianoCalibration(camera_matrix, dist_coeffs, pose_tracker, polygon_detector, MARKER_IDS, marker_size_meters)
   
   cap = cv.VideoCapture(0)
-  calibration_result = piano_calibrator.get_piano_calibration(cap)
+  result, piano_calibration_result = piano_calibrator.get_piano_calibration(cap)
 
-  cv.imshow('annotated_image', calibration_result['annotated_image'])
+  cv.imshow('annotated_image', piano_calibration_result['annotated_image'])
   cv.waitKey(0)
   cv.destroyAllWindows()
 

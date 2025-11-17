@@ -61,17 +61,17 @@ def main():
     
     
 
-    # Initialize serial communication manager
-    print("Initializing serial communication...")
-    serial_manager = SerialManager(auto_connect=True)
-    time.sleep(1)  # Give time for connections to establish
+    # # Initialize serial communication manager
+    # print("Initializing serial communication...")
+    # serial_manager = SerialManager(auto_connect=True)
+    # time.sleep(1)  # Give time for connections to establish
     
-    # Check connection status
-    connections = serial_manager.is_connected()
-    print(f"Connection status - Glove: {connections['glove']}, Audio: {connections['audio']}")
+    # # Check connection status
+    # connections = serial_manager.is_connected()
+    # print(f"Connection status - Glove: {connections['glove']}, Audio: {connections['audio']}")
     
-    # Start serial manager
-    serial_manager.start()
+    # # Start serial manager
+    # serial_manager.start()
 
     # Let user select camera
     # camera_id = list_and_select_camera(max_cameras=10)
@@ -79,7 +79,7 @@ def main():
     cap = cv.VideoCapture(0)
     
     if not cap.isOpened():
-        print(f"Error: Could not open camera {1}")
+        print(f"Error: Could not open camera {0}")
         return
     # initialize piano calibration
     # initialize aruco stuff
@@ -145,14 +145,12 @@ def main():
                 # image = cv.drawFrameAxes(image, camera_matrix, dist_coeffs, pose['rvec'], pose['tvec'], 0.1, 10)
             
             # Aruco polygon
-            success, marker_centers_2d = aruco_polygon.get_marker_polygon(MARKER_IDS, poses, store_polygon=True)
+            success, _ = aruco_polygon.get_marker_polygon(MARKER_IDS, poses, store_polygon=True)
             image = aruco_polygon.draw_box(image)
 
      
 
-            # Determine which keyboard is being used and initialize piano detector
-            if poses and piano_detector is None:
-                detected_marker_ids = [pose['id'] for pose in poses]
+        
             
             i+=1
             if i >= 60:
@@ -162,15 +160,15 @@ def main():
         # HAND FINDER PART
         image = tracker.hands_finder(image)
         lm_list, absolute_pos = tracker.position_finder(image, hand_no = 0, draw=False)
-        if i % 10 == 0:
-            for landmark in lm_list:
-                print(f"Landmark: {landmark}")
+        # if i % 10 == 0:
+        #     for landmark in lm_list:
+        #         print(f"Landmark: {landmark}")
 
         for landmark in lm_list:
             lm_id, x_px, y_px = landmark[0], landmark[1], landmark[2]
-            if lm_id in [4,8,12,16,20]:
+            if lm_id in [4,8,12,16,20] and (x_px != 0 and y_px != 0):
                 aruco_coords = aruco_polygon.transform_point_from_image_to_birdseye((x_px,y_px))
-                print(f"Finger {lm_id}: Birdseye coords {aruco_coords}")
+                print(f"Finger {lm_id}: Regular image coords {x_px, y_px}, Birdseye coords {aruco_coords}")
 
         """
         # Piano key detection
@@ -248,16 +246,13 @@ def main():
         cv.putText(image, fps_text, (text_x, text_y), font, font_scale, color, thickness)
         
         # Draw serial connection status (check dynamically)
-        connections = serial_manager.is_connected()
-        glove_status = "G" if connections['glove'] else "g"
-        audio_status = "A" if connections['audio'] else "a"
-        status_text = f"{glove_status}{audio_status}"
-        cv.putText(image, status_text, (10, 30), font, font_scale, (255, 255, 0), thickness)
+        # connections = serial_manager.is_connected()
+        # glove_status = "G" if connections['glove'] else "g"
+        # audio_status = "A" if connections['audio'] else "a"
+        # status_text = f"{glove_status}{audio_status}"
+        # cv.putText(image, status_text, (10, 30), font, font_scale, (255, 255, 0), thickness)
 
-        if gray is not None:
-            cv.imshow("Video", gray)
-        else:
-            cv.imshow("Video", image)
+        cv.imshow("Video", image)
 
         # Exit the loop if the 'q' key is pressed
         if cv.waitKey(1) & 0xFF == ord('q'):
@@ -265,7 +260,7 @@ def main():
     
     #closing everything properly !!! DO NOT REMOVE
     print("Shutting down...")
-    serial_manager.stop()
+    # serial_manager.stop()
     cap.release()
     cv.destroyAllWindows()
 
