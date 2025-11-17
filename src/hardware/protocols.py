@@ -7,18 +7,38 @@ Defines binary protocols for:
 """
 
 import struct
-from enum import IntEnum
+from enum import Enum, IntEnum
 from typing import Optional, Tuple, Dict, Any
 import numpy as np
 
-class FingerInstructionSet:
+"""The finger instruction set will be sent back to Python
+from the Teensy once the velostat has detected a finger press.
+Python will forward this information to the audio Teensy to play the note.
+"""
+
+class FingerInstructionSet_learningMode:
     fingerNumber: np.uint8
     midiNote: np.uint8  
     commandCode: np.uint8
     distanceToNote: np.float32
 
+class FingerInstructionSet_freeplayMode:
+    fingerNumber: np.uint8
+    midiNote: np.uint8  
+
+class PlayMode(Enum):
+    FREEPLAY_MODE = 0
+    LEARNING_MODE = 1
+
+"""The octave instruction set will be sent back to Python
+from the Teensy once the hand position has been detected.
+Python will forward this information to the audio Teensy to play the note.
+Octave instruction set is only needed for learning mode.
+"""
 class OctaveInstructionSet:
     handPosition: tuple[float, float]
+
+
 
 
 # TODO: Discuss w 

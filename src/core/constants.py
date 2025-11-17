@@ -45,6 +45,6 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 
 # File paths (absolute paths from project root)
 HAND_MODEL_PATH = os.path.join(PROJECT_ROOT, "assets", "models", "hand_landmarker.task")
-CAMERA_CALIBRATION_PATH = os.path.join(PROJECT_ROOT, "assets", "calibration", "camera_calibration.npz")
+CAMERA_CALIBRATION_PATH = os.path.join(PROJECT_ROOT, "assets", "calibration", "camera_calibration_newcam1.npz")
 CONFIG_DIR = os.path.join(PROJECT_ROOT, "config")
 ASSETS_DIR = os.path.join(PROJECT_ROOT, "assets")
