@@ -17,10 +17,13 @@ class ArucoPolygonDetector:
             output_size: (width, height) for bird's-eye view transform (default: (640, 480))
         """
 
+        # parameters for the camera calibration
         self.camera_matrix = camera_matrix
         self.dist_coeffs = dist_coeffs
         self.polygon = None
         self.output_size = output_size
+
+        self.birdseye_perspective_matrix = None
         
         # Pre-compute destination points for bird's-eye transform
         if output_size is not None:
@@ -33,6 +36,33 @@ class ArucoPolygonDetector:
             ], dtype=np.float32)
         else:
             self.dst_points = None
+   
+    """
+    Set the destination points for the birdseye transform.
+    Args:
+        dst_points: 4x2 array of destination points
+    """
+
+    @property
+    def dst_points(self) -> np.ndarray:
+        return self.__dst_points
+
+    @dst_points.setter
+    def dst_points(self, dst_points: np.ndarray):
+        if dst_points is not None:
+            if dst_points.shape != (4, 2):
+                raise ValueError("Destination points must be a 4x2 array")
+            if dst_points[0,0] < 0 or dst_points[0,1] < 0:
+                raise ValueError("Destination points must be positive")
+            if dst_points[1,0] < 0 or dst_points[1,1] < 0:
+                raise ValueError("Destination points must be positive")
+            if dst_points[2,0] < 0 or dst_points[2,1] < 0:
+                raise ValueError("Destination points must be positive")
+            if dst_points[3,0] < 0 or dst_points[3,1] < 0:
+                raise ValueError("Destination points must be positive")
+            self.__dst_points = dst_points
+
+
 
     def sort_markers(self, ordered_ids: List[int], poses: List[dict]):
         found_markers = []
@@ -127,6 +157,8 @@ class ArucoPolygonDetector:
         if len(self.polygon) != 4 or np.array_equal(self.polygon, [0,0,0,0]):
             return image
         
+        self._undistorted = undistort
+
         # Undistort image if requested
         if undistort:
             # Get optimal new camera matrix for undistortion (removes black borders)
@@ -173,7 +205,8 @@ class ArucoPolygonDetector:
         
         # Calculate the perspective transformation matrix
         perspective_matrix = cv.getPerspectiveTransform(src_points, dst_points)
-        
+        self.birdseye_perspective_matrix = perspective_matrix.astype(np.float64)
+    
         # Apply the transformation
         warped_image = cv.warpPerspective(working_image, perspective_matrix, 
                                         (output_width, output_height))
@@ -182,7 +215,7 @@ class ArucoPolygonDetector:
     
 
     def transform_birdseye_to_image(self, birdseye_image: np.ndarray, 
-                                   output_size: Optional[Tuple[int, int]] = None) -> np.ndarray:
+                                   ) -> np.ndarray:
         """
         Transform bird's-eye view image back to original camera view.
         
@@ -190,47 +223,70 @@ class ArucoPolygonDetector:
             birdseye_image: Image in bird's-eye view
             aruco_polygon_2d: List of 4 corner points of the ArUco polygon in original image.
                             If None, uses self.polygon if available.
-            output_size: (width, height) for output image. If None, uses birdseye_image size.
             
         Returns:
             Warped image in original camera view
         """
-        # Use provided polygon or fall back to stored polygon
-        if self.polygon is None:
-                return birdseye_image
-        aruco_polygon_2d = self.polygon
-            
-        if len(aruco_polygon_2d) != 4 or np.array_equal(aruco_polygon_2d, [0,0,0,0]):
-            return birdseye_image
+        if self.birdseye_perspective_matrix is None:
+            raise ValueError("Birdseye perspective matrix not found in polygon detector!")
         
-        # Source points are the destination points of the birdseye transform
-        if self.dst_points is not None:
-            src_points = self.dst_points
-        else:
-            # Fallback: create dst_points from output_size or image size
-            
-            w, h = output_size
-            
-            src_points = np.array([
-                [0, 0],
-                [w, 0],
-                [w, h],
-                [0, h]
-            ], dtype=np.float32)
+        perspective_matrix = np.linalg.inv(self.birdseye_perspective_matrix)
         
-        dst_points = np.array(aruco_polygon_2d, dtype=np.float32)
-        perspective_matrix = cv.getPerspectiveTransform(src_points, dst_points)
-        
-        if output_size is not None:
-            output_width, output_height = output_size
-            warped_image = cv.warpPerspective(birdseye_image, perspective_matrix, 
-                                            (output_width, output_height))
-        else:
-            # Use original image dimensions (need to get from somewhere - this is a limitation)
-            # For now, use birdseye image size
-            h, w = birdseye_image.shape[:2]
-            warped_image = cv.warpPerspective(birdseye_image, perspective_matrix, (w, h))
-        
+        warped_image = cv.warpPerspective(birdseye_image, perspective_matrix, birdseye_image.shape[:2])
         return warped_image
     
+    
+    def transform_point_from_birdseye_to_image(self, point: Tuple[float, float]) -> Tuple[float, float]:
+        """
+        Transform a point from bird's-eye view coordinates to original image coordinates.
+        Handles undistortion to match the forward transform.
+        
+        Args:
+            point: (x, y) tuple in bird's-eye view pixel coordinates
+            
+        Returns:
+            (x, y) tuple in original undistorted image pixel coordinates
+        """
+        if self.birdseye_perspective_matrix is None:
+            raise ValueError("Birdseye perspective matrix not found in polygon detector!")
+
+        inverse_matrix = np.linalg.inv(self.birdseye_perspective_matrix)
+
+        point_array = np.array([[point]], dtype=np.float32)
+        transformed = cv.perspectiveTransform(point_array, inverse_matrix)
+
+        return tuple(transformed[0][0].astype(np.float32))
+    
+
+    def transform_point_from_image_to_birdseye(self, point: Tuple[float, float]) -> Tuple[float, float]:
+        """
+        Transform a point from original image coordinates to bird's-eye view coordinates.
+        """
+        if self.birdseye_perspective_matrix is None:
+            raise ValueError("Birdseye perspective matrix not found in polygon detector!")
+        
+        point_array = np.array([[point]], dtype=np.float32)
+        transformed = cv.perspectiveTransform(point_array, self.birdseye_perspective_matrix)
+        return tuple(transformed[0][0].astype(np.float32))
+    
+    def transform_contour_from_birdseye_to_image(self, contour: np.ndarray) -> np.ndarray:
+        """
+        Transform a contour from bird's-eye view coordinates to original image coordinates.
+        Handles undistortion to match the forward transform.
+        
+        Args:
+            contour: Contour array with shape (N, 1, 2) in bird's-eye view space
+            image_shape: (height, width) of the original image
+            
+        Returns:
+            Contour array in original undistorted image space
+        """
+        if self.birdseye_perspective_matrix is None:
+            raise ValueError("Birdseye perspective matrix not found in polygon detector!")
+
+        inverse_matrix = np.linalg.inv(self.birdseye_perspective_matrix)
+        transformed = cv.perspectiveTransform(contour.astype(np.float32), inverse_matrix)
+
+        return transformed.astype(np.int32)
+ 
     

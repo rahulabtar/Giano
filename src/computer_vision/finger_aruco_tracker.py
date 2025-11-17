@@ -66,6 +66,8 @@ class FingerArucoTracker():
         """
 
         # return none if no polygon has been detected
+        if aruco_polygon_2d is None:
+            return None
         if np.array_equal(aruco_polygon_2d, [0,0,0,0]) or len(aruco_polygon_2d) != 4:
             #TODO: Remove after debugging
             print('No polygon exists!')
@@ -174,55 +176,7 @@ class FingerArucoTracker():
                          
         return image    
 
-    def transform_image_to_birdseye(self, image:np.ndarray, aruco_polygon_2d:List) -> np.ndarray:
-        """
-        Transform the camera view to show the piano surface from directly above.
-        
-        Args:
-            image: Input camera image
-            aruco_polygon_2d: List of 4 corner points of the ArUco polygon
-            
-        Returns:
-            Warped image showing piano from bird's-eye view
-        """
-        if len(aruco_polygon_2d) != 4 or np.array_equal(aruco_polygon_2d, [0,0,0,0]):
-            return image
-        
-        # Define source points (the 4 corners of the ArUco polygon in camera view)
-        src_points = np.array(aruco_polygon_2d, dtype=np.float32)
-        
-
-        if self.output_size:
-            output_width, output_height = self.output_size
-        else:
-            h,w,_ = image.shape
-            output_width = w
-            output_height = h
-        
- 
-        # Calculate the perspective transformation matrix
-        perspective_matrix = cv.getPerspectiveTransform(src_points, self.dst_points)
-        
-        # Apply the transformation
-        warped_image = cv.warpPerspective(image, perspective_matrix, 
-                                        (output_width, output_height))
-        
-        return warped_image
 
     
-    def transform_birdseye_to_image(self, birdseye_image:np.ndarray, aruco_polygon_2d:List, output_size:Optional[tuple]=None):
-        if len(aruco_polygon_2d) != 4 or np.array_equal(aruco_polygon_2d, [0,0,0,0]):
-            return birdseye_image
-        # source points are the destination points of the regularbirdseye transform
-        src_points = self.dst_points
-        dst_points = np.array(aruco_polygon_2d, dtype=np.float32)
-        perspective_matrix = cv.getPerspectiveTransform(src_points, dst_points)
-        
-        if output_size is not None:
-            output_width, output_height = output_size
-            warped_image = cv.warpPerspective(birdseye_image, perspective_matrix, (output_width, output_height))
-        else:
-            warped_image = cv.warpPerspective(birdseye_image, perspective_matrix, 
-                                        (birdseye_image.shape[1], birdseye_image.shape[0]))
-        return warped_image
+    
 

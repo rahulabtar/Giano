@@ -7,7 +7,7 @@ using ridge detection and ArUco marker-based perspective correction.
 
 import cv2 as cv
 import numpy as np
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple, Optional, Union
 import time
 import sys
 import os
@@ -56,6 +56,9 @@ class PianoCalibration:
       
       while True:
         success, image = cap.read()
+        corners, ids, rejected = self.pose_tracker.detect_markers(image)
+        if len(corners) > 0:
+            detected_markers_image = self.pose_tracker.draw_detected_markers(image, corners, ids)
         if not success: 
           print("Error reading from camera")
           return (2, None)
@@ -78,7 +81,7 @@ class PianoCalibration:
         
         # Live view mode - show current camera feed
         else:
-          cv.imshow("Press p to capture or q to quit", image)
+          cv.imshow("Press p to capture or q to quit", detected_markers_image)
           key = cv.waitKey(1) & 0xFF
           
           if key == ord('p'):
@@ -88,7 +91,7 @@ class PianoCalibration:
             cv.destroyAllWindows()
             return (2, None)
 
-    def detect_ridge_mask(self, image: np.ndarray, 
+    def _detect_ridge_mask(self, image: np.ndarray, 
                          median_blur_size: int = 3,
                          ridge_pad_size: int = 5,
                          debug_mode: bool = False) -> Tuple[np.ndarray, np.ndarray]:
@@ -107,7 +110,7 @@ class PianoCalibration:
                 - ridge_mask: Binary mask with key boundaries (255) and keys (0)
         """
         # Get ArUco marker poses and polygon
-        poses = self.pose_tracker.get_marker_poses(image, self.marker_size_meters)
+        poses = self.pose_tracker.get_marker_poses(image, marker_size_meters=MARKER_SIZE*IN_TO_METERS)
         success, marker_list_2d = self.polygon_detector.get_marker_polygon(
             self.marker_ids, poses, store_polygon=True
         )
@@ -117,15 +120,12 @@ class PianoCalibration:
             raise ValueError("ArUco markers not found in image!")
         
         print("ArUco markers found! Processing piano image...")
-        start_time = time.time()
         
         # Transform to bird's eye view
-        warped = self.polygon_detector.transform_image_to_birdseye(image, undistort=True)
-        transform_time = time.time() - start_time
-        print(f"Image transformation (birdseye): {transform_time:.4f} seconds")
+        birdseye_image = self.polygon_detector.transform_image_to_birdseye(image, undistort=True)
         
         # Convert to grayscale
-        gray = cv.cvtColor(warped, cv.COLOR_BGR2GRAY)
+        gray = cv.cvtColor(birdseye_image, cv.COLOR_BGR2GRAY)
         
         # Apply median blur to reduce noise
         # Pad first to avoid edge artifacts
@@ -133,8 +133,14 @@ class PianoCalibration:
         gray_padded = cv.copyMakeBorder(gray, pad_size, pad_size, pad_size, pad_size, 
                                        cv.BORDER_REPLICATE)
         med_image_padded = cv.medianBlur(gray_padded, median_blur_size)
+        
+        cv.imshow('med_image_padded', med_image_padded)
+        cv.waitKey(0)
+        cv.destroyAllWindows()
+
         med_image = med_image_padded[pad_size:-pad_size, pad_size:-pad_size]
         
+
         # Ridge detection
         start_time = time.time()
         
@@ -184,7 +190,7 @@ class PianoCalibration:
         
         return cropped, mask_y
     
-    def _label_keys_from_boundary_mask(boundary_mask: np.ndarray,
+    def _label_keys_from_boundary_mask(self, boundary_mask: np.ndarray,
                                   start_midi: int,
                                   expected_keys: int | None = None,
                                   close_px: int = 3,
@@ -208,7 +214,7 @@ class PianoCalibration:
       
       # Filter out small noise regions (keep only regions above threshold)
       # Adjust min_area based on your noise level - smaller values keep more, larger removes more
-      min_area = 100  # Minimum pixels to keep (removes isolated 1-2 pixel noise)
+      min_area = 120  # Minimum pixels to keep (removes isolated 1-2 pixel noise)
       walls_cleaned = np.zeros_like(boundary_mask)
       
       for label_id in range(1, num_labels):  # Skip background (label 0)
@@ -220,15 +226,13 @@ class PianoCalibration:
 
       # Now proceed with closing operations to connect fragments
       # Skip opening - it breaks connections. Use closing to connect instead.
-      walls_horizontal = walls_cleaned.copy()
+      walls_cleaned
 
       # 1) Vertical closing: connects broken vertical boundary segments
       # Use a tall vertical line kernel to connect vertical gaps (most important for piano keys)
       vertical_kernel = cv.getStructuringElement(cv.MORPH_RECT, (1, 5))  # 1 wide, 10 tall
-      walls_vertical_closed = cv.morphologyEx(walls_horizontal, cv.MORPH_CLOSE, vertical_kernel)
+      walls_vertical_closed = cv.morphologyEx(walls_cleaned, cv.MORPH_CLOSE, vertical_kernel)
       
-      # Apply multiple iterations for better connection of stubborn gaps
-      walls_vertical_closed = cv.morphologyEx(walls_vertical_closed, cv.MORPH_CLOSE, vertical_kernel)
       
       if debug_mode:
         cv.imshow('walls_vertical_closed', walls_vertical_closed)
@@ -237,8 +241,7 @@ class PianoCalibration:
 
       # 2) Horizontal closing: connects broken horizontal boundary segments
       # Use a WIDE horizontal line kernel to connect horizontal gaps (top/bottom edges)
-      # CRITICAL: Increased from 3 to 60 - the previous kernel was way too small!
-      horizontal_kernel = cv.getStructuringElement(cv.MORPH_RECT, (5, 1))  # 60 wide, 1 tall
+      horizontal_kernel = cv.getStructuringElement(cv.MORPH_RECT, (5, 1))  # 5 wide, 1 tall
       walls_connected = cv.morphologyEx(walls_vertical_closed, cv.MORPH_CLOSE, horizontal_kernel)
       
       # Apply multiple iterations for better connection
@@ -365,98 +368,10 @@ class PianoCalibration:
         return []
       return keys
    
-    def _label_keys_from_boundary_mask(self, 
-                                     boundary_mask: np.ndarray,
-                                     start_midi: int,
-                                     expected_keys: Optional[int] = None,
-                                     close_px: int = 3,
-                                     debug_mode: bool = False) -> List[Dict]:
-        """
-        Extract and label individual piano keys from a boundary mask.
-        
-        Args:
-            boundary_mask: uint8 image with 255 at key boundaries, 0 elsewhere
-            start_midi: MIDI note of the left-most key in view (e.g., 21 for A0, 48 for C3)
-            expected_keys: Optional sanity check on key count
-            close_px: Thickness to ensure separators are closed (default: 3)
-            debug_mode: If True, display intermediate results (default: False)
-        Returns:
-            List of dicts: [{name, midi_note, is_black, bbox, contour, poly, centroid, height, y, area}, ...]
-        """
-        h, w = boundary_mask.shape
-        
-        # 1) Thicken boundaries to close small gaps
-        k = cv.getStructuringElement(cv.MORPH_RECT, (close_px, close_px))
-        walls = cv.dilate(boundary_mask, k, iterations=1)
-        
-        if debug_mode:
-            cv.imshow('closed walls', walls)
-            cv.waitKey(0)
-            cv.destroyAllWindows()
-        
-        # 2) Invert to get key regions as 1s
-        regions = cv.bitwise_not(walls)
-        regions = (regions > 0).astype(np.uint8)
-        
-        # 3) Dilate regions slightly to recover area lost during wall dilation
-        if close_px > 1:
-            dilate_kernel = cv.getStructuringElement(cv.MORPH_RECT, (close_px-1, close_px-1))
-            regions = cv.dilate(regions, dilate_kernel, iterations=1)
-        
-        # 4) Find contours of key regions
-        contours, _ = cv.findContours((regions * 255).astype(np.uint8),
-                                     cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
-        
-        keys = []
-        NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
-        
-        def name_from_midi(m: int) -> Tuple[str, bool]:
-            n = NAMES[m % 12]
-            octave = (m // 12) - 1
-            return f"{n}{octave}", ('#' in n)
-        
-        for cnt in contours:
-            area = cv.contourArea(cnt)
-            x, y, w, h = cv.boundingRect(cnt)
-            
-            M = cv.moments(cnt)
-            if M['m00'] == 0:
-                continue
-            cx = int(M['m10'] / M['m00'])
-            cy = int(M['m01'] / M['m00'])
-            
-            # Optional simplification (keeps notches)
-            poly = cv.approxPolyDP(cnt, epsilon=0.01 * cv.arcLength(cnt, True), closed=True)
-            
-            keys.append({
-                'contour': cnt,        # full contour
-                'poly': poly,          # simplified polygon
-                'centroid': (cx, cy),
-                'bbox': (x, y, w, h),
-                'height': h,
-                'y': y,
-                'area': area
-            })
-        
-        # Sort keys by x (horizontal start of boundingRect)
-        keys.sort(key=lambda k: k['bbox'][0])
-        
-        # Assign MIDI names
-        for idx, k in enumerate(keys):
-            midi = start_midi + idx
-            name, is_black_from_midi = name_from_midi(midi)
-            k['name'] = name
-            k['midi_note'] = midi
-            k['is_black'] = is_black_from_midi
-        
-        if expected_keys is not None and len(keys) != expected_keys:
-            print(f"Warning: Expected {expected_keys} keys but found {len(keys)}")
-        
-        return keys
     
-    def map_coords_to_original(self, coords_or_contour, y_offset: int):
+    def _map_coords_to_uncropped(self, coords_or_contour, y_offset: int):
         """
-        Map coordinates or contours from cropped image space back to original image space.
+        Map coordinates or contours from cropped image space back to uncropped image space.
         
         Args:
             coords_or_contour: Can be:
@@ -567,50 +482,63 @@ class PianoCalibration:
       
       return None
     
+   
     def draw_labeled_keys(self, 
-                         image: np.ndarray, 
+                         image: Union[np.ndarray, None], 
                          labeled: List[Dict], 
                          y_offset: int = 0) -> np.ndarray:
-        """
-        Draw labeled keys on the image.
+      """
+      Draw labeled keys on the original camera image.
+      
+      Args:
+          image: Original camera image (BGR or grayscale)
+          labeled: List of key dictionaries from label_keys_from_boundary_mask
+          y_offset: Y offset to add if keys are from cropped image (default: 0)
+          
+      Returns:
+          Original image with drawn keys (BGR)
+      """
+      if image is None:
+        return None
         
-        Args:
-            image: Original (uncropped) image to draw on (grayscale or BGR)
-            labeled: List of key dictionaries from label_keys_from_boundary_mask
-            y_offset: Y offset to add if keys are from cropped image (default: 0)
-            
-        Returns:
-            Image with drawn keys (BGR)
-        """
-        if len(image.shape) == 2:
-            image = cv.cvtColor(image, cv.COLOR_GRAY2BGR)
+      # Convert to BGR if grayscale
+      if len(image.shape) == 2:
+        image = cv.cvtColor(image, cv.COLOR_GRAY2BGR)
+      
+      # Undistort the image to match the coordinate space of the transformed points
+      h, w = image.shape[:2]
+      new_camera_matrix, roi = cv.getOptimalNewCameraMatrix(
+        self.camera_matrix, self.dist_coeffs, (w, h), 0.8, (w, h)
+      )
+      undistorted_image = cv.undistort(image, self.camera_matrix, self.dist_coeffs, None, new_camera_matrix)
+
+
+      # Create a copy to draw on
+      result_image = undistorted_image.copy()
+      
+      for p_key in labeled:
+        # Step 1: Map from cropped to uncropped bird's-eye view (add y_offset)
+        cx_birdseye, cy_birdseye = self._map_coords_to_uncropped(p_key['centroid'], y_offset)
+        contour_uncropped = self._map_coords_to_uncropped(p_key['contour'], y_offset)
         
-        for p_key in labeled:
-            # Map bbox coordinates back to original image space
-            x, y, w, h = self.map_coords_to_original(p_key['bbox'], y_offset)
-            pt1 = (int(x), int(y))
-            pt2 = (int(x+w), int(y+h))
-            
-            # Map centroid back to original image space
-            cx, cy = self.map_coords_to_original(p_key['centroid'], y_offset)
-            
-            # Map polygon and contour back to original image space
-            poly_original = self.map_coords_to_original(p_key['poly'], y_offset)
-            contour_original = self.map_coords_to_original(p_key['contour'], y_offset)
-            
-            # Draw on original image
-            image = cv.circle(image, (cx, cy), 5, (255, 0, 127), -1)  # Magenta centroid
-            image = cv.putText(image, p_key['name'], (cx, cy-10), 
-                             cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
-            image = cv.drawContours(image, [contour_original], -1, (0, 255, 0), 2)  # Green contour
+        # Step 2: Transform from bird's-eye view to original image space
+        cx, cy = self.polygon_detector.transform_point_from_birdseye_to_image((cx_birdseye, cy_birdseye))
+        contour_original = self.polygon_detector.transform_contour_from_birdseye_to_image(contour_uncropped)
         
-        return image
+        # Draw on original image
+        result_image = cv.circle(result_image, (int(cx), int(cy)), 5, (255, 0, 127), -1)  # Magenta centroid
+        result_image = cv.drawContours(result_image, [contour_original], -1, (0, 255, 0), 2)  # Green contour
+        result_image = cv.putText(result_image, p_key['name'], (int(cx), int(cy-10)), 
+          cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
+      
+      return result_image
+        
     
     def get_piano_calibration(self, 
             cap: cv.VideoCapture,
             start_midi: int = 48,
             mask_margin_pct: float = 0.09,
-            debug_mode: bool = False) -> Dict:
+            debug_mode: bool = False) -> tuple[int, Dict]:
       """
       Complete pipeline: detect ridge mask, crop markers, label keys, and draw results.
       
@@ -620,6 +548,8 @@ class PianoCalibration:
           debug_mode: If True, display intermediate results (default: False)
           
       Returns:
+          tuple of (status, dictionary) where:
+              - status: 0 if successful, 1 if image confirmed, 2 if calibration cancelled
           Dictionary with keys:
               - 'gray': Grayscale bird's-eye view
               - 'ridge_mask': Binary ridge mask (before cropping)
@@ -628,24 +558,45 @@ class PianoCalibration:
               - 'labeled_keys': List of labeled key dictionaries
               - 'annotated_image': Image with keys drawn
       """
-      result, image = self._calibration_loop(cap)
-      if result == 2:
-        return None
-      # Detect ridge mask
-      gray, ridge_mask = self.detect_ridge_mask(image, debug_mode=debug_mode)
-      
-      # Crop marker regions
-      cropped_mask, y_offset = self._crop_marker_regions(ridge_mask, mask_margin_pct)
-      
-      # Label keys
-      labeled_keys = self._label_keys_from_boundary_mask(
-          cropped_mask, start_midi, close_px=3
-      )
-      
-      # Draw labeled keys on grayscale image
-      annotated_image = self.draw_labeled_keys(gray, labeled_keys, y_offset)
-      
-      return {
+      while True:
+        result, image = self._calibration_loop(cap)
+        if result == 2:
+          return result, None
+        # Detect ridge mask
+        gray, ridge_mask = self._detect_ridge_mask(image, debug_mode=debug_mode)
+        
+
+        # Crop marker regions
+        cropped_mask, y_offset = self._crop_marker_regions(ridge_mask, mask_margin_pct)
+        
+        # Label keys
+        labeled_keys = self._label_keys_from_boundary_mask(
+            cropped_mask, start_midi, close_px=3, debug_mode=debug_mode
+        )
+        
+        # Draw labeled keys on grayscale image
+        annotated_image = self.draw_labeled_keys(image, labeled_keys, y_offset)
+        # Show mask overlay for user confirmation
+
+        print("  - Press 'c' to confirm and continue")
+        print("  - Press 'q' to quit")
+        print("  - Press 'r' to retry")
+        print("\n Keyboard detected! Review the overlay:")
+        
+        cv.imshow('found piano', annotated_image)
+        cv.waitKey(0)
+        key = cv.waitKey(0) & 0xFF
+        if key == ord('c'):
+          cv.destroyAllWindows()
+          break
+        elif key == ord('q'):
+          cv.destroyAllWindows()
+          return 2, None
+        elif key == ord('r'):
+          cv.destroyAllWindows()
+          continue
+
+      return 0, {
         'gray': gray,
         'ridge_mask': ridge_mask,
         'cropped_mask': cropped_mask,
