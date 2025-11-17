@@ -2,9 +2,12 @@ import cv2 as cv
 import numpy as np
 import sys
 import os
+from pathlib import Path
+
 
 # Add project root to Python path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, project_root)
 
 from src.core.constants import CAMERA_CALIBRATION_PATH, DEFAULT_CAMERA_ID
 
@@ -28,10 +31,10 @@ def main():
         return
     
     # Open camera
-    cap = cv.VideoCapture(DEFAULT_CAMERA_ID+1)
+    cap = cv.VideoCapture(DEFAULT_CAMERA_ID)
     
     if not cap.isOpened():
-        print(f"Error: Could not open camera {DEFAULT_CAMERA_ID+1}")
+        print(f"Error: Could not open camera {DEFAULT_CAMERA_ID}")
         return
     
     # Get camera resolution
