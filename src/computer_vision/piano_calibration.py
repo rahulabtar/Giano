@@ -56,6 +56,7 @@ class PianoCalibration:
     captured_image = None
     
     while True:
+      # TODO: Adapative filtering for light intensity
       success, image = cap.read()
       corners, ids, rejected = self.pose_tracker.detect_markers(image)
       if len(corners) > 0:
@@ -68,7 +69,13 @@ class PianoCalibration:
       
       # If we have a captured image, show it with confirmation options
       if captured_image is not None:
-        cv.imshow("Press c to confirm or p to retake", captured_image)
+        corners, ids, rejected = self.pose_tracker.detect_markers(captured_image)
+        if len(corners) > 0:
+          try_detect_image = self.pose_tracker.draw_detected_markers(captured_image, corners, ids)
+          cv.imshow("Markers found! If all four markers have been detected, press c to confirm or p to try again", try_detect_image)
+        else:
+          try_detect_image = captured_image.copy()
+          cv.imshow("Markers not found! Press p to try again", try_detect_image)
         key = cv.waitKey(1) & 0xFF
         
         if key == ord('c'):
@@ -90,6 +97,16 @@ class PianoCalibration:
         if key == ord('p'):
           captured_image = image.copy()  # Capture current frame
           cv.destroyWindow("Press p to capture or q to quit")
+          gray = cv.cvtColor(captured_image, cv.COLOR_BGR2GRAY)
+          adaptive_threshold_image = self.pose_tracker.apply_adaptive_threshold(gray)
+          hist_eq_image = self.pose_tracker.apply_histogram_equalization(gray)
+
+          cv.imshow("Gray", gray)
+          cv.imshow("Adaptive threshold", adaptive_threshold_image)
+          cv.imshow("Histogram equalization", hist_eq_image)
+          cv.waitKey(0)
+          cv.destroyAllWindows()
+
         elif key == ord('q'):
           cv.destroyAllWindows()
           return (2, None)
