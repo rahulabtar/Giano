@@ -58,22 +58,22 @@ void setup() {
   // Envelope setup - audio hat
   env.attack(3 - (vel / 70)); // softer notes have slower attack
   env.decay(500);    // milliseconds
-  env.sustain(sustainLevel);  
+  env.sustain(0.5);  
   env.release(800);    
 
   env1.attack(3 - (vel / 70));  // milliseconds
   env1.decay(500);    // milliseconds
-  env1.sustain(sustainLevel);  
+  env1.sustain(0.5);  
   env1.release(800);    
 
   env2.attack(3 - (vel / 70)); // milliseconds
   env2.decay(500);    // milliseconds
-  env2.sustain(sustainLevel);  
+  env2.sustain(0.5);  
   env2.release(800);    
   
   env3.attack(3 - (vel / 70)); // milliseconds
   env3.decay(500);    // milliseconds
-  env3.sustain(sustainLevel);  
+  env3.sustain(0.5);  
   env3.release(800);    
   
 }
