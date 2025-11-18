@@ -97,15 +97,6 @@ class PianoCalibration:
         if key == ord('p'):
           captured_image = image.copy()  # Capture current frame
           cv.destroyWindow("Press p to capture or q to quit")
-          gray = cv.cvtColor(captured_image, cv.COLOR_BGR2GRAY)
-          adaptive_threshold_image = self.pose_tracker.apply_adaptive_threshold(gray)
-          hist_eq_image = self.pose_tracker.apply_histogram_equalization(gray)
-
-          cv.imshow("Gray", gray)
-          cv.imshow("Adaptive threshold", adaptive_threshold_image)
-          cv.imshow("Histogram equalization", hist_eq_image)
-          cv.waitKey(0)
-          cv.destroyAllWindows()
 
         elif key == ord('q'):
           cv.destroyAllWindows()
