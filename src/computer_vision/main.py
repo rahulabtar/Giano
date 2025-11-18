@@ -30,7 +30,7 @@ try:
     from src.hardware.serial_manager import SerialManager
     from src.hardware.protocols import ActionCode
     from src.core.constants import MARKER_SIZE, MARKER_IDS, HAND_MODEL_PATH, CAMERA_CALIBRATION_PATH, IN_TO_METERS, PI
-
+    from src.core.utils import name_from_midi
 except ImportError as e:
     print(f"Could not import user stuff: {e}")
     raise
@@ -85,19 +85,16 @@ def main():
     # initialize aruco stuff
     tracker = HandTracker()
     aruco_pose_tracker = ArucoPoseTracker(camera_matrix, dist_coeffs, mode = TrackingMode.STATIC)
-    aruco_polygon = ArucoPolygonDetector(camera_matrix, dist_coeffs)
-    finger_aruco = FingerArucoTracker()
+    finger_aruco = FingerArucoTracker(camera_matrix, dist_coeffs)
     finger_tracker = FingerStateTracker(debounce_time=0.05)
     
     piano_calibrator = PianoCalibration(camera_matrix, 
                                         dist_coeffs, 
                                         aruco_pose_tracker, 
-                                        aruco_polygon, 
+                                        finger_aruco, 
                                         MARKER_IDS, 
                                         MARKER_SIZE*IN_TO_METERS,
                                         )
-
-    piano_detector = None  # Will be initialized when keyboard is detected
     
     # Configure pose filtering - you can experiment with these settings
     aruco_pose_tracker.configure_pose_filtering(
@@ -114,14 +111,16 @@ def main():
     
     # FPS monitor setup
     prev_time = 0
-    i = 0
     poses_list = []
 
-    status, piano_calibration_result = piano_calibrator.get_piano_calibration(cap, debug_mode=True)
+    status, piano_calibration_result = piano_calibrator.get_piano_calibration(cap, debug_mode=False)
     if status == 2:
         print("Calibration cancelled by user")
         return
     
+    finger_aruco.set_keyboard_map(piano_calibration_result['labeled_keys'])
+    
+    i = 0
     # MAIN LOOP
     while True:
         success, image = cap.read()
@@ -145,8 +144,8 @@ def main():
                 # image = cv.drawFrameAxes(image, camera_matrix, dist_coeffs, pose['rvec'], pose['tvec'], 0.1, 10)
             
             # Aruco polygon
-            success, _ = aruco_polygon.get_marker_polygon(MARKER_IDS, poses, store_polygon=True)
-            image = aruco_polygon.draw_box(image)
+            success, _ = finger_aruco.get_marker_polygon(MARKER_IDS, poses, store_polygon=True)
+            image = finger_aruco.draw_box(image)
 
      
 
@@ -167,8 +166,13 @@ def main():
         for landmark in lm_list:
             lm_id, x_px, y_px = landmark[0], landmark[1], landmark[2]
             if lm_id in [4,8,12,16,20] and (x_px != 0 and y_px != 0):
-                aruco_coords = aruco_polygon.transform_point_from_image_to_birdseye((x_px,y_px))
-                print(f"Finger {lm_id}: Regular image coords {x_px, y_px}, Birdseye coords {aruco_coords}")
+                aruco_coords = finger_aruco.transform_point_from_image_to_birdseye((x_px,y_px))
+                midi_note = finger_aruco.find_closest_key(x_px, y_px)
+                name, is_black_from_midi = name_from_midi(midi_note)
+                distance = finger_aruco.measure_distance_to_key(x_px, y_px, midi_note)
+                if lm_id == 4:
+                    print(f"Finger {lm_id}: Regular image coords {x_px, y_px}, Birdseye coords {aruco_coords}, MIDI note {name}, Distance {distance}")
+
 
         """
         # Piano key detection

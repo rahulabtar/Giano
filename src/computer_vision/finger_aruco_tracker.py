@@ -1,129 +1,181 @@
 import numpy as np
 import cv2 as cv
 from typing import List, Dict, Optional, Tuple
+from src.computer_vision.aruco_polygon_detector import ArucoPolygonDetector
+from src.core.utils import name_from_midi
 
-
-class FingerArucoTracker():
-    def __init__(self, output_size:tuple =(640,480)) -> None:
+class FingerArucoTracker(ArucoPolygonDetector):
+    def __init__(self, 
+                 camera_matrix:np.ndarray, 
+                 dist_coeffs: np.ndarray, 
+                 output_size:tuple =(640,480)
+                 ):
         """
         Args:
+            camera_matrix: The camera projection matrix from calibration
+            dist_coeffs: The distortion coefficients from calibration
             output_size: (width, height of the output size for birdseye transform)
         """
+        super().__init__(camera_matrix, dist_coeffs, output_size)
         self.fingertip_ids = [4,8,12,16,20]
-        self.output_size = output_size
+        self.keyboard_map = None
 
-        output_width, output_height = output_size
-        # array of destination points for birdseye transform
-        self.dst_points = np.array([
-            [0, 0],                           # top-left
-            [output_width, 0],                # top-right
-            [output_width, output_height],    # bottom-right
-            [0, output_height]                # bottom-left
-        ], dtype=np.float32)
-
-    @property
-    def output_size(self)->tuple:
+    def set_keyboard_map(self, labeled_keys: List[Dict]):
         """
-        Get the output size for birdseye transform.
+        Set the keyboard map for the finger aruco tracker.
         """
-        return self.__output_size
+        for i,key in enumerate(labeled_keys):
+            closed_contour = self._ensure_contour_closed(key['contour'])
+            if self._is_contour_closed(closed_contour):
+                labeled_keys[i]['contour'] = closed_contour
+            else:
+                print("Contour is not closed")
+                return False
+        self.keyboard_map = labeled_keys
 
-    @output_size.setter
-    def output_size(self, output_size:tuple):
-        """
-        Set the output size for birdseye transform.
-        Args:
-            output_size: (width, height of the output size for birdseye transform)
-        """
-        if output_size is not None:
-            if len(output_size) != 2:
-                raise ValueError("Output size must be a tuple of (width, height)")
-            if output_size[0] <= 0 or output_size[1] <= 0:
-                raise ValueError("Output size must be greater than 0")
-            if output_size[0] % 2 != 0 or output_size[1] % 2 != 0:
-                raise ValueError("Output size must be even")
-            if output_size[0] > 1920 or output_size[1] > 1080:
-                raise ValueError("Output size must be less than or equal to 1920x1080")
-        self.__output_size = output_size
-
-    def get_output_size(self)->tuple:
-        """
-        Get the output size for birdseye transform.
-        """
-        return self.__output_size
-
-    def transform_finger_to_aruco_space(self, finger_pixel_coords:tuple, aruco_polygon_2d:List, use_internal=False):
-        """
-        Transform finger pixel coordinates to ArUco polygon coordinate space.
-        
-        Args:
-            finger_pixel_coords: tuple of (x, y) pixel coordinates of finger
-            aruco_polygon_2d: List of 4 2D points defining the ArUco polygon corners
-                            [top-left, top-right, bottom-right, bottom-left]
-        
-        Returns:
-            (u, v) coordinates in ArUco space where (0,0) is top-left, (1,1) is bottom-right
-        """
-
-        # return none if no polygon has been detected
-        if aruco_polygon_2d is None:
-            return None
-        if np.array_equal(aruco_polygon_2d, [0,0,0,0]) or len(aruco_polygon_2d) != 4:
-            #TODO: Remove after debugging
-            print('No polygon exists!')
-            return None
-
-        # return none if the finger coordinates are 0 as well
-        if finger_pixel_coords == (0,0):
-            return None
-        # Define the ArUco polygon corners (in pixel space)
-        src_points = np.array(aruco_polygon_2d, dtype=np.float32)
-
-        # Define the target coordinate space (normalized 0-1 rectangle)
-        dst_points = np.array([
-            [0, 0],    # top-left
-            [1, 0],    # top-right  
-            [1, 1],    # bottom-right
-            [0, 1]     # bottom-left
-        ], dtype=np.float32)
-
-        # Calculate homography transformation matrix
-        homography_matrix = cv.getPerspectiveTransform(src_points, dst_points)
-
-        finger_point = np.array([[finger_pixel_coords]], dtype=np.float32)
-        transformed_point = cv.perspectiveTransform(finger_point, homography_matrix)
-
-        return transformed_point[0][0]
     
-    def get_finger_keys(self, hand_landmarks: List, aruco_polygon_2d: List, 
-                       piano_detector) -> Dict[int, Optional[Dict]]:
+    def get_finger_keys(self, hand_landmarks: List, 
+                       ) -> Dict[int, Optional[int]]:
         """
         Get piano keys for all fingertip positions.
         
         Args:
             hand_landmarks: List of hand landmark data from MediaPipe
-            aruco_polygon_2d: List of 4 2D points defining the ArUco polygon corners
-            piano_detector: PianoKeyDetector instance
             
         Returns:
             Dictionary mapping finger_id to key information (or None)
         """
-        finger_positions = {}
+        finger_keys = {}
         
         # Get normalized positions for all fingertips
         for landmark in hand_landmarks:
             lm_id, x_px, y_px = landmark[0], landmark[1], landmark[2]
             
             if lm_id in self.fingertip_ids:
-                aruco_coords = self.transform_finger_to_aruco_space(
-                    (x_px, y_px), aruco_polygon_2d)
-                
-                if aruco_coords is not None:
-                    finger_positions[lm_id] = aruco_coords
-        
-        # Detect keys for all finger positions
-        return piano_detector.detect_finger_keys(finger_positions)
+                if x_px != 0 and y_px != 0:
+
+                    midi_note = self.find_closest_key(x_px, y_px)
+                    if midi_note is not None:
+                        finger_keys[lm_id] = midi_note
+
+        return finger_keys
     
+    def find_closest_key(self, x_px: float, y_px: float) -> Optional[Dict]:
+        """
+        Find the closest key to a given (x_px, y_px) point in image space.
+        
+        Args:
+            x_px: X coordinate in image space (pixels)
+            y_px: Y coordinate in image space (pixels)
+            
+        Returns:
+            MIDI note number of the closest key, 
+            or None if no key is found
+        """
+        if self.keyboard_map is None:
+            return None
+        
+        # Transform point from image space to birdseye space
+        aruco_coords = self.transform_point_from_image_to_birdseye((x_px, y_px))
+        point = np.array([aruco_coords[0], aruco_coords[1]])
+        
+        closest_midi_note = None
+        min_distance = float('inf')
+
+
+        for key in self.keyboard_map:
+            result = cv.pointPolygonTest(key['contour'], point, measureDist=False)
+            if result > 0:
+                return key['midi_note']
+            
+            distance = np.linalg.norm(point - key['centroid'])
+            if distance < min_distance:
+                min_distance = distance
+                closest_midi_note = key['midi_note']
+        
+        return closest_midi_note
+    
+    def measure_distance_to_key(self, x_px: float, y_px: float, midi_note: int) -> Optional[float]:
+        """
+        Measure the distance to a given key in image space.
+        """
+        if self.keyboard_map is None:
+            return None
+        
+        for key in self.keyboard_map:
+            if key['midi_note'] == midi_note:
+                aruco_x, aruco_y = self.transform_point_from_image_to_birdseye((x_px, y_px))
+                return np.linalg.norm(np.array([aruco_x, aruco_y]) - np.array(key['centroid']))
+    
+    
+    def _is_contour_closed(self, contour: np.ndarray) -> bool:
+        """
+        Check if a contour is closed (first and last points are the same).
+        
+        Args:
+            contour: Contour array with shape (N, 1, 2)
+            
+        Returns:
+            True if contour is closed, False otherwise
+        """
+        if len(contour) < 3:
+            return False
+        first_point = contour[0, 0]
+        last_point = contour[-1, 0]
+        return np.allclose(first_point, last_point, atol=1e-6)
+    
+    def _ensure_contour_closed(self, contour: np.ndarray) -> np.ndarray:
+        """
+        Ensure a contour is closed by adding the first point at the end if needed.
+        
+        Args:
+            contour: Contour array with shape (N, 1, 2)
+            
+        Returns:
+            Closed contour array
+        """
+        if self._is_contour_closed(contour):
+            return contour
+        
+        # Add first point at the end to close the contour
+        first_point = contour[0:1, :, :].copy()
+        closed_contour = np.vstack([contour, first_point])
+        return closed_contour
+    
+
+
+    def _map_coords_to_uncropped(self, coords_or_contour, y_offset: int):
+        """
+        Map coordinates or contours from cropped image space back to uncropped image space.
+        
+        Args:
+            coords_or_contour: Can be:
+                - Tuple (x, y) for a single point
+                - NumPy array with shape (N, 1, 2) for contour/polygon
+                - Tuple (x, y, w, h) for bbox
+            y_offset: Y offset to add (pixels cropped from top)
+            
+        Returns:
+            Same type as input but with y coordinates adjusted
+        """
+        if isinstance(coords_or_contour, tuple):
+            if len(coords_or_contour) == 2:
+                # Single point (x, y)
+                x, y = coords_or_contour
+                return (x, y + y_offset)
+            elif len(coords_or_contour) == 4:
+                # Bbox (x, y, w, h)
+                x, y, w, h = coords_or_contour
+                return (x, y + y_offset, w, h)
+        elif isinstance(coords_or_contour, np.ndarray):
+            # Contour or polygon array (N, 1, 2)
+            mapped = coords_or_contour.copy()
+            mapped[:, 0, 1] += y_offset  # Add offset to all y coordinates
+            return mapped
+        
+        return coords_or_contour
+
+
     def draw_finger_positions(self, image, finger_positions, hand_landmarks:List):
         """Draw finger positions and coordinates on the image."""
         for landmark in hand_landmarks:
@@ -142,40 +194,7 @@ class FingerArucoTracker():
                          
         return image
     
-    def draw_finger_keys(self, image, finger_keys, hand_landmarks: List):
-        """
-        Draw finger positions with piano key information on the image.
-        
-        Args:
-            image: Input image
-            finger_keys: Dictionary mapping finger_id to key information
-            hand_landmarks: List of hand landmark data
-            
-        Returns:
-            Image with finger positions and key labels drawn
-        """
-        for landmark in hand_landmarks:
-            lm_id, x_px, y_px = landmark[0], landmark[1], landmark[2]
-            
-            if lm_id in finger_keys and finger_keys[lm_id] is not None:
-                key_info = finger_keys[lm_id]
-                
-                # Choose color based on key type
-                color = (0, 0, 255) if key_info['is_black'] else (0, 255, 0)
-                
-                # Draw finger position
-                cv.circle(image, (x_px, y_px), 8, color, -1)
-                
-                # Draw key name
-                key_text = key_info['key_name']
-                cv.putText(image, key_text, (x_px + 10, y_px - 10),
-                         cv.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
-            elif lm_id in self.fingertip_ids:
-                # Draw fingertip even if no key detected
-                cv.circle(image, (x_px, y_px), 8, (128, 128, 128), -1)
-                         
-        return image    
-
+    
 
     
     
