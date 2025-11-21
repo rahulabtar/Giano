@@ -2,8 +2,6 @@
 #include <Audio.h>
 #include <Wire.h>
 #include <SPI.h>
-#include <SD.h>
-#include <SerialFlash.h>
 
 AudioSynthWaveformSine   fmCarrier;
 AudioSynthWaveformSine   fmModulator;
@@ -93,6 +91,8 @@ void noteOff(byte channel, byte note, byte velocity) {
 }
 
 void setup() {
+
+  AudioMemory(12); 
   Serial.begin(115200);
   Serial1.begin(9600);
 
@@ -126,25 +126,28 @@ void loop() {
 }
 
 void checkSerial1ForSensorMessages() {
-  if (!Serial1.available()) return;
-
-  String msg = Serial1.readStringUntil('\n');
-  msg.trim();
-
-  if (msg.startsWith("Sensor")) {
-    int idx = msg.substring(7).toInt();
-
-    if (idx >= 0 && idx < NUM_SENSORS) {
-      int midiNote = sensorToNote[idx];
-      Serial.printf("Trigger from Sensor %d → Note %d\n", idx, midiNote);
-
-      noteOn(1, midiNote, vel);
-
-      isNoteOn[idx] = true;
-      noteOnTime[idx] = millis();
+  while (Serial1.available()) {
+    char c = Serial1.read();
+    static String msg = "";
+    if (c == '\n') {
+      msg.trim();
+      if (msg.startsWith("Sensor")) {
+        int idx = msg.substring(7).toInt();
+        if (idx >= 0 && idx < NUM_SENSORS) {
+          int midiNote = sensorToNote[idx];
+          Serial.printf("Trigger from Sensor %d → Note %d\n", idx, midiNote);
+          noteOn(1, midiNote, vel);
+          isNoteOn[idx] = true;
+          noteOnTime[idx] = millis();
+        }
+      }
+      msg = ""; // reset for next message
+    } else {
+      msg += c;
     }
   }
 }
+
 
 void autoNoteOffHandler() {
   unsigned long now = millis();
