@@ -1,12 +1,13 @@
-#include <Arduino.h>
 /**
 FREEPLAY MODE Firmware
  Basically just continually tests for a button press and then spits out whatever note 
  sends a flag to the python to check CV because a note was pressed.
  Doesnt care what finger, just that SOME finger was detected
 
- For testing purposes: will assign a random note to each finger  on the 
- audio hat firmware test, just so we know that 
+
+
+
+ For testing purposes: will assign a random note to each finger just so we know that 
  it works and directly outputs to audio
 
 */
@@ -14,6 +15,8 @@ FREEPLAY MODE Firmware
 // BUTTON / MODE RELATED VARIABLES
 const int BUTTON_MODE = 2;
 const int BUTTON_SONG = 3;
+
+
 
 bool freeplayMode = true; // THIS IS JUST FOR TESTING THE INTERRUPT OF THIS VERSION. IN THE REAL FIRMWARE WE WILL JUST WIND UP SWITCHING MODES NOT EXITING
 
@@ -29,6 +32,8 @@ const int ADC_BITS = 12;
 int baseline[NUM_VELOSTAT];
 
 bool pressed = false;
+
+bool sensorState[NUM_VELOSTAT] = {false, false};
 
 // ADD HAPTICS SHIT HERE FOR LEARNING MODE
 
@@ -87,20 +92,36 @@ void loop() {
 
 }
 
-void checkFingerPress() {
 
-  // loop through 
+
+void checkFingerPress() {
   for (int i = 0; i < NUM_VELOSTAT; i++) {
     int raw = analogRead(VELOSTAT_PINS[i]);
-    if (raw >= (baseline[i] + THRESHOLD)) {
-      pressed = true;
+    bool currentlyPressed = raw >= (baseline[i] + THRESHOLD);
+
+    // send message only when the sensor transitions from unpressed -> pressed
+    if (currentlyPressed && !sensorState[i]) {
       Serial1.print("Sensor ");
-      Serial1.println(i); // sends a message to the receiving teensy with the pressed message for it to decode
-    } else if (raw < (baseline[i] + THRESHOLD)) {
-      pressed = false;
+      Serial1.println(i);     // send to receiving Teensy
+      Serial.print("Sensor ");
+      Serial.println(i);      // debug on transmitting Teensy
+
+      sensorState[i] = true;  // update pressed state
     }
+    // update state when released but do NOT print anything
+    else if (!currentlyPressed && sensorState[i]) {
+      sensorState[i] = false; // sensor released
+      Serial.println("Sensor released");
+    }
+    // do nothing if currentlyPressed == false and sensorState[i] == false
   }
-  delay(50);
+
+  // no delay necessary if you want instant response; optional:
+  delay(50); // debounce / stability
 }
+
+
+
+
 
 
