@@ -5,8 +5,6 @@ FREEPLAY MODE Firmware
  Doesnt care what finger, just that SOME finger was detected
 
 
-
-
  For testing purposes: will assign a random note to each finger just so we know that 
  it works and directly outputs to audio
 
@@ -25,7 +23,7 @@ bool freeplayMode = true; // THIS IS JUST FOR TESTING THE INTERRUPT OF THIS VERS
 
 const int NUM_VELOSTAT = 2; // num of fingers eventually
 const int VELOSTAT_PINS[NUM_VELOSTAT] = {A0, A1}; // pinouts for velostat
-const int THRESHOLD = 35; // threshold for pressed/unpressed
+const int THRESHOLD = 45; // threshold for pressed/unpressed
 const int ADC_BITS = 12;
 
 // to collect baseline readings 
@@ -99,29 +97,25 @@ void checkFingerPress() {
     int raw = analogRead(VELOSTAT_PINS[i]);
     bool currentlyPressed = raw >= (baseline[i] + THRESHOLD);
 
-    // send message only when the sensor transitions from unpressed -> pressed
+    // transition: unpressed -> pressed
     if (currentlyPressed && !sensorState[i]) {
       Serial1.print("Sensor ");
-      Serial1.println(i);     // send to receiving Teensy
+      Serial1.println(i);     // send "note on" to receiver
       Serial.print("Sensor ");
-      Serial.println(i);      // debug on transmitting Teensy
+      Serial.println(i);      // debug
 
-      sensorState[i] = true;  // update pressed state
-    }
-    // update state when released but do NOT print anything
+      sensorState[i] = true;  // remember it's pressed
+    } 
+    // transition: pressed -> released
     else if (!currentlyPressed && sensorState[i]) {
-      sensorState[i] = false; // sensor released
-      Serial.println("Sensor released");
+      Serial1.print("SensorReleased ");
+      Serial1.println(i);     // send "note off" to receiver
+      Serial.println("Sensor released"); // debug
+
+      sensorState[i] = false; // update state
     }
-    // do nothing if currentlyPressed == false and sensorState[i] == false
+    // if pressed and already marked as pressed, do nothing
   }
 
-  // no delay necessary if you want instant response; optional:
-  delay(50); // debounce / stability
+  delay(50); // optional debounce/stability
 }
-
-
-
-
-
-
