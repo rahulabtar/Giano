@@ -8,8 +8,7 @@ AudioSynthWaveformSine   fmModulator;
 AudioSynthWaveformSine   fmHarmonic1;
 AudioSynthWaveformSine   fmHarmonic2; 
 AudioSynthWaveformSine   fmHarmonic3;
-AudioSynthWaveformSine   fmHarmonic4;
-AudioSynthWaveformSine   fmHarmonic5;
+
 
 AudioEffectEnvelope      env;      
 AudioEffectEnvelope      env1;
@@ -27,23 +26,23 @@ AudioConnection patch6(fmHarmonic1, 0, env1, 0);
 AudioConnection patch7(fmHarmonic2, 0, env2, 0);
 AudioConnection patch8(fmHarmonic3, 0, env3, 0);
 
-AudioConnection patch11(env, 0, mixer, 1);
-AudioConnection patch12(env1, 0, mixer, 2);
-AudioConnection patch13(env2, 0, mixer, 3);
-AudioConnection patch14(env3, 0, mixer, 3);
-AudioConnection patch17(mixer, 0, i2sOutput, 0);
-AudioConnection patch18(mixer, 0, i2sOutput, 1);
+AudioConnection patch9(env, 0, mixer, 1);
+AudioConnection patch10(env1, 0, mixer, 2);
+AudioConnection patch11(env2, 0, mixer, 3);
+AudioConnection patch12(env3, 0, mixer, 3);
+AudioConnection patch13(mixer, 0, i2sOutput, 0);
+AudioConnection patch14(mixer, 0, i2sOutput, 1);
 
 
 
 const int NUM_SENSORS = 2;
-
+AudioControlSGTL5000 audioShield;
 int sensorToNote[NUM_SENSORS] = {
   60, 
   71  
 };
 
-int vel = 100; // velocity (you may change)
+int vel = 70; // velocity (you may change)
 
 // Auto note-off timing
 const unsigned long NOTE_DURATION = 200; // ms
@@ -80,6 +79,7 @@ void noteOn(byte channel, byte note, byte velocity) {
   env1.noteOn();
   env2.noteOn();
   env3.noteOn();
+
 }
 
 void noteOff(byte channel, byte note, byte velocity) {
@@ -92,7 +92,9 @@ void noteOff(byte channel, byte note, byte velocity) {
 
 void setup() {
 
-  AudioMemory(12); 
+  AudioMemory(20);
+  audioShield.enable();
+  audioShield.volume(0.4);
   Serial.begin(115200);
   Serial1.begin(9600);
 
@@ -122,7 +124,7 @@ void setup() {
 
 void loop() {
   checkSerial1ForSensorMessages();
-  autoNoteOffHandler();
+  //autoNoteOffHandler();
 }
 
 void checkSerial1ForSensorMessages() {
@@ -131,25 +133,37 @@ void checkSerial1ForSensorMessages() {
     static String msg = "";
     if (c == '\n') {
       msg.trim();
-      if (msg.startsWith("Sensor")) {
+
+      // NOTE ON
+      if (msg.startsWith("Sensor ")) {
         int idx = msg.substring(7).toInt();
-        if (idx >= 0 && idx < NUM_SENSORS) {
-          int midiNote = sensorToNote[idx];
-          Serial.printf("Trigger from Sensor %d → Note %d\n", idx, midiNote);
-          noteOn(1, midiNote, vel);
-          isNoteOn[idx] = true;
-          noteOnTime[idx] = millis();
+            if (idx >= 0 && idx < NUM_SENSORS && !isNoteOn[idx]) { 
+              int midiNote = sensorToNote[idx];
+              Serial.printf("Trigger from Sensor %d → Note %d\n", idx, midiNote);
+              noteOn(1, midiNote, vel);
+              isNoteOn[idx] = true;
+              }
+            }
+            // NOTE OFF
+            else if (msg.startsWith("SensorReleased ")) {
+              int idx = msg.substring(15).toInt();
+              if (idx >= 0 && idx < NUM_SENSORS && isNoteOn[idx]) { 
+              int midiNote = sensorToNote[idx];
+              Serial.printf("Release from Sensor %d → Note %d\n", idx, midiNote);
+              noteOff(1, midiNote, vel);
+              isNoteOn[idx] = false;
+              }
+            }
+
+          msg = ""; // reset for next message
+        } else {
+          msg += c;
         }
-      }
-      msg = ""; // reset for next message
-    } else {
-      msg += c;
     }
-  }
 }
 
 
-void autoNoteOffHandler() {
+/*void autoNoteOffHandler() {
   unsigned long now = millis();
 
   for (int i = 0; i < NUM_SENSORS; i++) {
@@ -160,3 +174,4 @@ void autoNoteOffHandler() {
     }
   }
 }
+*/
