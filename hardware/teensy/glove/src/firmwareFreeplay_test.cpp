@@ -73,6 +73,7 @@ void setup() {
 void loop() {
   // put your main code here, to run repeatedly:
   if(!freeplayMode) {
+    // this is just a debug statement, should NEVER reach this if setup is properly communicated.
     Serial.println("NOT IN FREEPLAY MODE SOMETHING IS WRONG for this test");
   }
 
@@ -101,6 +102,7 @@ void checkFingerPress() {
     if (currentlyPressed && !sensorState[i]) {
       Serial1.print("Sensor ");
       Serial1.println(i);     // send "note on" to receiver
+      // SENDS TO RASPI
       Serial.print("Sensor ");
       Serial.println(i);      // debug
 
@@ -110,6 +112,10 @@ void checkFingerPress() {
     else if (!currentlyPressed && sensorState[i]) {
       Serial1.print("SensorReleased ");
       Serial1.println(i);     // send "note off" to receiver
+
+      // SENDING IT TO RASPI
+      Serial.print("SensorReleased ");
+      Serial.println(i);     // send "note off" to receiver
       Serial.println("Sensor released"); // debug
 
       sensorState[i] = false; // update state
@@ -119,3 +125,9 @@ void checkFingerPress() {
 
   delay(50); // optional debounce/stability
 }
+
+
+
+
+
+
