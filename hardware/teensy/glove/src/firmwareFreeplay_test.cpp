@@ -10,6 +10,9 @@ FREEPLAY MODE Firmware
 
 */
 
+// HAND RELATED VARIABLE
+#define HAND "L"
+
 // BUTTON / MODE RELATED VARIABLES
 const int BUTTON_MODE = 2;
 const int BUTTON_SONG = 3;
@@ -103,6 +106,7 @@ void checkFingerPress() {
       Serial1.print("Sensor ");
       Serial1.println(i);     // send "note on" to receiver
       // SENDS TO RASPI
+      Serial.print(HAND);
       Serial.print("Sensor ");
       Serial.println(i);      // debug
 
@@ -114,9 +118,9 @@ void checkFingerPress() {
       Serial1.println(i);     // send "note off" to receiver
 
       // SENDING IT TO RASPI
+      Serial.print(HAND);
       Serial.print("SensorReleased ");
       Serial.println(i);     // send "note off" to receiver
-      Serial.println("Sensor released"); // debug
 
       sensorState[i] = false; // update state
     }
