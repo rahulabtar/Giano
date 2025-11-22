@@ -95,6 +95,47 @@ class FingerArucoTracker(ArucoPolygonDetector):
         
         return closest_midi_note
     
+    def find_closest_key_by_boundary_distance(self, x_px: float, y_px: float) -> Optional[int]:
+        """
+        Find the closest key using distance to polygon boundary instead of centroid.
+        This method mitigates y-direction bias from perspective projection.
+        
+        Args:
+            x_px: X coordinate in image space (pixels)
+            y_px: Y coordinate in image space (pixels)
+            
+        Returns:
+            MIDI note number of the closest key, 
+            or None if no key is found
+        """
+        if self.keyboard_map is None:
+            return None
+        
+        # Transform point from image space to birdseye space
+        aruco_coords = self.transform_point_from_image_to_birdseye((x_px, y_px))
+        point = np.array([aruco_coords[0], aruco_coords[1]], dtype=np.float32)
+        
+        closest_midi_note = None
+        min_distance = float('inf')
+
+        for key in self.keyboard_map:
+            # Use pointPolygonTest with measureDist=True to get signed distance
+            # Positive = inside polygon, negative = outside, value = distance to boundary
+            distance = cv.pointPolygonTest(key['contour'], point, measureDist=True)
+            
+            if distance > 0:
+                # Point is inside the key - return immediately
+                return key['midi_note']
+            
+            # For points outside, use absolute distance (negative value)
+            # This gives distance to the polygon boundary, which accounts for projection distortion
+            abs_distance = abs(distance)
+            if abs_distance < min_distance:
+                min_distance = abs_distance
+                closest_midi_note = key['midi_note']
+        
+        return closest_midi_note
+    
     def measure_distance_to_key(self, x_px: float, y_px: float, midi_note: int) -> Optional[float]:
         """
         Measure the distance to a given key in image space.
@@ -196,16 +237,28 @@ class FingerArucoTracker(ArucoPolygonDetector):
 
 
     def draw_birdseye_keys(self, image, landmarks:List, finger_keys:List):
+        """
+        Draw birdseye keys on the image.
+        Args:
+            image: The image to draw on.
+            landmarks: Input from MediaPipe. In image space.
+            finger_keys: Dictionary mapping finger_id to key information (or None)
+        Returns:
+            The image with the birdseye keys drawn on it.
+        """
         birdseye_image = self.transform_image_to_birdseye(image, undistort=True)
         for key in self.keyboard_map:
             birdseye_image = cv.polylines(birdseye_image, [key['contour']], isClosed=True, color=(0, 255, 0), thickness=2)
             birdseye_image = cv.putText(birdseye_image, key['name'], key['centroid'], cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
     
         for landmark in landmarks:
+            # because the landmark is in image space, we need to transform it to birdseye space
+            aruco_x, aruco_y = self.transform_point_from_image_to_birdseye((landmark[1], landmark[2]))
             if landmark[0] in finger_keys.keys():
                 midi_note = finger_keys[landmark[0]]
                 key = next((k for k in self.keyboard_map if k['midi_note'] == midi_note), None)
-                cv.line(birdseye_image, (landmark[1], landmark[2]), (key['centroid'][0], key['centroid'][1]), (0, 255, 0), 2)
+                cv.circle(birdseye_image, (int(round(aruco_x)), int(round(aruco_y))), 8, (255, 0, 0), -1)
+                cv.line(birdseye_image, (int(round(aruco_x)), int(round(aruco_y))), (key['centroid'][0], key['centroid'][1]), (0, 255, 0), 2)
         return birdseye_image
     
 
