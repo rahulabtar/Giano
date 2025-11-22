@@ -191,11 +191,21 @@ class FingerArucoTracker(ArucoPolygonDetector):
                 coord_text = f"({u:.2f}, {v:.2f})"
                 cv.putText(image, coord_text, (x_px + 10, y_px - 10),
                          cv.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
-                         
+        
         return image
-    
-    
 
+
+    def draw_birdseye_keys(self, image, landmarks:List, finger_keys:List):
+        birdseye_image = self.transform_image_to_birdseye(image, undistort=True)
+        for key in self.keyboard_map:
+            birdseye_image = cv.polylines(birdseye_image, [key['contour']], isClosed=True, color=(0, 255, 0), thickness=2)
+            birdseye_image = cv.putText(birdseye_image, key['name'], key['centroid'], cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
     
+        for landmark in landmarks:
+            if landmark[0] in finger_keys.keys():
+                midi_note = finger_keys[landmark[0]]
+                key = next((k for k in self.keyboard_map if k['midi_note'] == midi_note), None)
+                cv.line(birdseye_image, (landmark[1], landmark[2]), (key['centroid'][0], key['centroid'][1]), (0, 255, 0), 2)
+        return birdseye_image
     
 
