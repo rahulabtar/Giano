@@ -19,6 +19,9 @@ class FingerArucoTracker(ArucoPolygonDetector):
         super().__init__(camera_matrix, dist_coeffs, output_size)
         self.fingertip_ids = [4,8,12,16,20]
         self.keyboard_map = None
+        self._y_scale_factor = None  # Cache for y-direction scale correction
+        self._x_scale_factor = None  # Cache for x-direction scale correction
+        self._use_coordinate_correction = True  # Flag to enable coordinate correction
 
     def set_keyboard_map(self, labeled_keys: List[Dict]):
         """
@@ -32,6 +35,9 @@ class FingerArucoTracker(ArucoPolygonDetector):
                 print("Contour is not closed")
                 return False
         self.keyboard_map = labeled_keys
+        # Recompute scale factors when keyboard map changes
+        self._x_scale_factor = None
+        self._y_scale_factor = None
 
     
     def get_finger_keys(self, hand_landmarks: List, 
@@ -95,6 +101,59 @@ class FingerArucoTracker(ArucoPolygonDetector):
         
         return closest_midi_note
     
+    def _compute_scale_factors(self) -> Tuple[float, float]:
+        """
+        Compute the x and y-direction scale correction factors from the perspective transformation.
+        This accounts for non-uniform scaling in the bird's-eye view transformation.
+        
+        Returns:
+            Tuple of (x_scale_factor, y_scale_factor) to normalize the coordinate system
+        """
+        if self.birdseye_perspective_matrix is None:
+            return 1.0, 1.0
+        
+        # Compute how unit vectors in x and y directions transform
+        # This tells us the scale factors in each direction
+        M = self.birdseye_perspective_matrix
+        
+        # Transform unit vectors in homogeneous coordinates
+        # Unit vector in x-direction: [1, 0, 1]
+        x_unit = np.array([1, 0, 1], dtype=np.float32)
+        # Unit vector in y-direction: [0, 1, 1]
+        y_unit = np.array([0, 1, 1], dtype=np.float32)
+        
+        # Transform and convert back from homogeneous coordinates
+        x_transformed = M @ x_unit
+        x_transformed = x_transformed[:2] / x_transformed[2]
+        
+        y_transformed = M @ y_unit
+        y_transformed = y_transformed[:2] / y_transformed[2]
+        
+        # Compute the magnitude of the transformed vectors
+        x_scale = np.linalg.norm(x_transformed)
+        y_scale = np.linalg.norm(y_transformed)
+        
+        # Normalize to the average scale to preserve aspect ratio
+        avg_scale = (x_scale + y_scale) / 2.0
+        
+        if x_scale > 0 and y_scale > 0:
+            x_factor = avg_scale / x_scale
+            y_factor = avg_scale / y_scale
+            return x_factor, y_factor
+        
+        return 1.0, 1.0
+    
+    def _get_scale_factors(self) -> Tuple[float, float]:
+        """Get cached scale factors, computing them if necessary."""
+        if self._x_scale_factor is None or self._y_scale_factor is None:
+            self._x_scale_factor, self._y_scale_factor = self._compute_scale_factors()
+        return self._x_scale_factor, self._y_scale_factor
+    
+    def _get_y_scale_factor(self) -> float:
+        """Get cached y-scale factor, computing it if necessary."""
+        _, y_factor = self._get_scale_factors()
+        return y_factor
+    
     def find_closest_key_by_boundary_distance(self, x_px: float, y_px: float) -> Optional[int]:
         """
         Find the closest key using distance to polygon boundary instead of centroid.
@@ -132,6 +191,132 @@ class FingerArucoTracker(ArucoPolygonDetector):
             abs_distance = abs(distance)
             if abs_distance < min_distance:
                 min_distance = abs_distance
+                closest_midi_note = key['midi_note']
+        
+        return closest_midi_note
+    
+    def transform_point_with_correction(self, x_px: float, y_px: float) -> Tuple[float, float]:
+        """
+        Transform a point from image space to birdseye space with coordinate correction.
+        This applies scale factors to account for perspective distortion in both x and y.
+        
+        Args:
+            x_px: X coordinate in image space (pixels)
+            y_px: Y coordinate in image space (pixels)
+            
+        Returns:
+            Tuple of (corrected_x, corrected_y) in birdseye space
+        """
+        # Transform point from image space to birdseye space
+        aruco_coords = self.transform_point_from_image_to_birdseye((x_px, y_px))
+        
+        if self._use_coordinate_correction:
+            # Get scale factors and apply correction
+            x_scale, y_scale = self._get_scale_factors()
+            corrected_x = aruco_coords[0] * x_scale
+            corrected_y = aruco_coords[1] * y_scale
+            return corrected_x, corrected_y
+        else:
+            return aruco_coords[0], aruco_coords[1]
+    
+    def find_closest_key_with_y_correction(self, x_px: float, y_px: float) -> Optional[int]:
+        """
+        Find the closest key using a y-direction corrected distance metric.
+        This accounts for non-uniform scaling in the perspective transformation.
+        
+        When moving directly upward in physical space, the y-coordinate in bird's-eye
+        view may decrease due to perspective distortion. This method applies a correction
+        factor to make vertical movement in physical space correspond to minimal y-change
+        in the bird's-eye view.
+        
+        Args:
+            x_px: X coordinate in image space (pixels)
+            y_px: Y coordinate in image space (pixels)
+            
+        Returns:
+            MIDI note number of the closest key, 
+            or None if no key is found
+        """
+        if self.keyboard_map is None:
+            return None
+        
+        # Transform point from image space to birdseye space
+        aruco_coords = self.transform_point_from_image_to_birdseye((x_px, y_px))
+        point = np.array([aruco_coords[0], aruco_coords[1]], dtype=np.float32)
+        
+        # Get y-scale correction factor
+        y_scale = self._get_y_scale_factor()
+        
+        closest_midi_note = None
+        min_distance = float('inf')
+
+        for key in self.keyboard_map:
+            # Check if point is inside key
+            result = cv.pointPolygonTest(key['contour'], point, measureDist=False)
+            if result > 0:
+                return key['midi_note']
+            
+            # Compute distance with y-correction
+            # Apply scale factor to y-component to account for perspective distortion
+            centroid = np.array(key['centroid'])
+            dx = point[0] - centroid[0]
+            dy = (point[1] - centroid[1]) * y_scale  # Apply correction to y-component
+            
+            # Use corrected distance
+            distance = np.sqrt(dx**2 + dy**2)
+            
+            if distance < min_distance:
+                min_distance = distance
+                closest_midi_note = key['midi_note']
+        
+        return closest_midi_note
+    
+    def find_closest_key_with_full_correction(self, x_px: float, y_px: float) -> Optional[int]:
+        """
+        Find the closest key using corrected coordinates for both x and y directions.
+        This fully accounts for perspective distortion in the bird's-eye transformation.
+        
+        Args:
+            x_px: X coordinate in image space (pixels)
+            y_px: Y coordinate in image space (pixels)
+            
+        Returns:
+            MIDI note number of the closest key, 
+            or None if no key is found
+        """
+        if self.keyboard_map is None:
+            return None
+        
+        # Transform with coordinate correction
+        corrected_x, corrected_y = self.transform_point_with_correction(x_px, y_px)
+        point = np.array([corrected_x, corrected_y], dtype=np.float32)
+        
+        closest_midi_note = None
+        min_distance = float('inf')
+
+        for key in self.keyboard_map:
+            # Apply same correction to key centroid for fair comparison
+            # Note: This assumes keys were detected in uncorrected space
+            # For best results, keys should be stored with corrected coordinates
+            centroid = np.array(key['centroid'])
+            if self._use_coordinate_correction:
+                x_scale, y_scale = self._get_scale_factors()
+                corrected_centroid = np.array([centroid[0] * x_scale, centroid[1] * y_scale])
+            else:
+                corrected_centroid = centroid
+            
+            # Check if point is inside key (using original contour - this is approximate)
+            result = cv.pointPolygonTest(key['contour'], point, measureDist=False)
+            if result > 0:
+                return key['midi_note']
+            
+            # Compute distance with corrected coordinates
+            dx = point[0] - corrected_centroid[0]
+            dy = point[1] - corrected_centroid[1]
+            distance = np.sqrt(dx**2 + dy**2)
+            
+            if distance < min_distance:
+                min_distance = distance
                 closest_midi_note = key['midi_note']
         
         return closest_midi_note
@@ -246,14 +431,15 @@ class FingerArucoTracker(ArucoPolygonDetector):
         Returns:
             The image with the birdseye keys drawn on it.
         """
-        birdseye_image = self.transform_image_to_birdseye(image, undistort=True)
+        birdseye_image = self.transform_image_to_birdseye(image, undistort=True, use_polygon_aspect_ratio=True)
         for key in self.keyboard_map:
             birdseye_image = cv.polylines(birdseye_image, [key['contour']], isClosed=True, color=(0, 255, 0), thickness=2)
             birdseye_image = cv.putText(birdseye_image, key['name'], key['centroid'], cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
     
         for landmark in landmarks:
             # because the landmark is in image space, we need to transform it to birdseye space
-            aruco_x, aruco_y = self.transform_point_from_image_to_birdseye((landmark[1], landmark[2]))
+            # aruco_x, aruco_y = self.transform_point_from_image_to_birdseye((landmark[1], landmark[2]))
+            aruco_x, aruco_y = self.transform_point_with_correction(landmark[1], landmark[2])
             if landmark[0] in finger_keys.keys():
                 midi_note = finger_keys[landmark[0]]
                 key = next((k for k in self.keyboard_map if k['midi_note'] == midi_note), None)

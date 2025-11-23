@@ -172,20 +172,21 @@ class ArucoPoseTracker:
         # 1. It's enabled AND
         # 2. There's a problematic intensity situation (not just white paper) OR
         # 3. Detection failed and we should try preprocessing as fallback
-        if len(ids) < 4:
+        if ids is not None:
+            if len(ids) < 4:
        
             # Apply adaptive thresholding
-            processed = self.apply_adaptive_threshold(gray)
-            
-            # Detect markers with preprocessed image
-            corners_processed, ids_processed, rejected_processed = self.detector.detectMarkers(processed)
-            
-            # Use preprocessed results if they're better (found more markers)
-            if ids_processed is not None and len(ids_processed) > 0:
-                if ids is None or len(ids) == 0 or len(ids_processed) > len(ids):
-                    corners, ids, rejected = corners_processed, ids_processed, rejected_processed
-                    if self.debug_filtering:
-                        print(f"Adaptive threshold improved detection: found {len(ids_processed)} markers")
+                processed = self.apply_adaptive_threshold(gray)
+                
+                # Detect markers with preprocessed image
+                corners_processed, ids_processed, rejected_processed = self.detector.detectMarkers(processed)
+                
+                # Use preprocessed results if they're better (found more markers)
+                if ids_processed is not None and len(ids_processed) > 0:
+                    if ids is None or len(ids) == 0 or len(ids_processed) > len(ids):
+                        corners, ids, rejected = corners_processed, ids_processed, rejected_processed
+                        if self.debug_filtering:
+                            print(f"Adaptive threshold improved detection: found {len(ids_processed)} markers")
         
         return corners, ids, rejected
     

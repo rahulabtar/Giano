@@ -1,6 +1,6 @@
 import cv2 as cv
 import numpy as np
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Dict
 
 
 
@@ -94,14 +94,13 @@ class ArucoPolygonDetector:
 
         return ordered
 
-    def get_marker_polygon(self, ordered_ids: List[int], poses: List, store_polygon: bool = False) -> Tuple[bool, List]:
+    def get_marker_polygon(self, ordered_ids: List[int], poses: List) -> Tuple[bool, List]:
         """
-        Get the polygon created by the ArUco markers with the given IDs and store it in the class if desired.
+        Get the polygon created by the ArUco markers with the given IDs and store it in the class.
         
         Args:
             ordered_ids: List of marker IDs in the desired order
             poses: List of poses of the markers
-            store_polygon: Whether to store the polygon in the class
             
         Returns:
             List of 2D points forming the polygon, or [0,0,0,0] if insufficient markers
@@ -125,8 +124,11 @@ class ArucoPolygonDetector:
             
             center_2d = center_2d.reshape(-1, 2)[0]
             marker_centers_2d.append(center_2d)
-        if store_polygon:
-            self.polygon = marker_centers_2d
+        self.polygon = marker_centers_2d
+
+        # Compute and update output_size to preserve aspect ratio
+        self._update_output_size_from_polygon()
+
         return True, marker_centers_2d
     
 
@@ -140,13 +142,67 @@ class ArucoPolygonDetector:
         
         return new_image
     
-    def transform_image_to_birdseye(self, image: np.ndarray, undistort: bool = True) -> np.ndarray:
+    def _compute_output_size_from_polygon(self, src_points: np.ndarray, target_height: int = 480) -> Tuple[int, int]:
+        """
+        Compute output size that preserves the aspect ratio of the keyboard polygon.
+        
+        Args:
+            src_points: Source polygon points (4x2 array)
+            target_height: Target height in pixels (default: 480)
+            
+        Returns:
+            Tuple of (output_width, output_height) preserving aspect ratio
+        """
+        # Compute bounding box of the polygon
+        x_coords = src_points[:, 0]
+        y_coords = src_points[:, 1]
+        
+        width = np.max(x_coords) - np.min(x_coords)
+        height = np.max(y_coords) - np.min(y_coords)
+        
+        if height <= 0:
+            # Fallback to default if height is invalid
+            return 640, 480
+        
+        # Compute aspect ratio
+        aspect_ratio = width / height
+        
+        # Scale target_height to maintain aspect ratio
+        output_width = int(target_height * aspect_ratio)
+        output_height = target_height
+        
+        return output_width, output_height
+    
+    def _update_output_size_from_polygon(self):
+        """
+        Update output_size to preserve the aspect ratio of the stored polygon.
+        This ensures the bird's-eye view doesn't distort the keyboard shape.
+        """
+        if self.polygon is None or len(self.polygon) != 4:
+            return
+        
+        polygon_array = np.array(self.polygon, dtype=np.float32)
+        new_output_size = self._compute_output_size_from_polygon(polygon_array)
+        
+        # Update output_size and recompute dst_points
+        self.output_size = new_output_size
+        output_width, output_height = new_output_size
+        self.dst_points = np.array([
+            [0, 0],
+            [output_width, 0],
+            [output_width, output_height],
+            [0, output_height]
+        ], dtype=np.float32)
+    
+    def transform_image_to_birdseye(self, image: np.ndarray, undistort: bool = True, 
+                                   use_polygon_aspect_ratio: bool = True) -> np.ndarray:
         """
         Transform the camera view to show the piano surface from directly above.
         
         Args:
             image: Input camera image (distorted)
             undistort: If True, correct for lens distortion before perspective transform
+            use_polygon_aspect_ratio: If True, compute output size from polygon aspect ratio (default: True)
             
         Returns:
             Warped image showing piano from bird's-eye view (undistorted if undistort=True)
@@ -188,9 +244,20 @@ class ArucoPolygonDetector:
             # Use distorted image and polygon as-is
             src_points = np.array(self.polygon, dtype=np.float32)
             working_image = image
-        
+
         # Determine output size and destination points
-        if self.output_size is not None:
+        if use_polygon_aspect_ratio:
+            # Compute output size from polygon aspect ratio (use undistorted points if available)
+            # TODO: use update logic
+            output_width, output_height = self._compute_output_size_from_polygon(src_points)
+            # Update dst_points to match computed size
+            dst_points = np.array([
+                [0, 0],
+                [output_width, 0],
+                [output_width, output_height],
+                [0, output_height]
+            ], dtype=np.float32)
+        elif self.output_size is not None:
             output_width, output_height = self.output_size
             dst_points = self.dst_points
         else:
@@ -302,5 +369,170 @@ class ArucoPolygonDetector:
         transformed = cv.perspectiveTransform(contour.astype(np.float32), inverse_matrix)
 
         return transformed.astype(np.int32)
+    
+    def transform_entire_image_to_marker_plane(self, 
+                                               image: np.ndarray,
+                                               marker_poses: List[Dict],
+                                               plane_extent_meters: Tuple[float, float] = (2.0, 1.0),
+                                               output_size: Optional[Tuple[int, int]] = None,
+                                               undistort: bool = True) -> np.ndarray:
+        """
+        Project the entire image to a coordinate system defined by the ArUco marker plane.
+        This creates a bird's-eye view of the entire scene, not just the marker polygon region.
+        
+        Args:
+            image: Input camera image
+            plane_extent_meters: (width, height) of the plane to project in meters (default: 2.0m x 1.0m)
+            output_size: Output image size (width, height). If None, computed from plane_extent
+            undistort: If True, undistort image before transformation
+            
+        Returns:
+            Warped image showing entire scene from marker plane perspective
+        """
+        if self.polygon is None or len(self.polygon) != 4 or np.array_equal(self.polygon, [0,0,0,0]):
+            return image
+        
+        # Undistort image if requested
+        if undistort:
+            h, w = image.shape[:2]
+            new_camera_matrix, roi = cv.getOptimalNewCameraMatrix(
+                self.camera_matrix, self.dist_coeffs, (w, h), 0.9, (w, h)
+            )
+            self.new_camera_matrix = new_camera_matrix
+            working_image = cv.undistort(image, self.camera_matrix, self.dist_coeffs, None, new_camera_matrix)
+        else:
+            working_image = image
+            new_camera_matrix = self.camera_matrix
+        
+        # Use the first marker to define the plane coordinate system
+        # The marker's pose defines: origin at marker center, Z-axis normal to marker
+        reference_marker = marker_poses[0]
+        rvec = reference_marker['rvec']
+        tvec = reference_marker['tvec']
+        
+        # Get rotation matrix
+        R, _ = cv.Rodrigues(rvec)
+        
+        # Define plane coordinate system:
+        # - Origin at marker center (tvec)
+        # - X-axis: marker's X direction in world
+        # - Y-axis: marker's Y direction in world  
+        # - Z-axis: marker's Z direction (normal to plane)
+        plane_x_axis = R[:, 0]  # Marker's X-axis in camera coordinates
+        plane_y_axis = R[:, 1]  # Marker's Y-axis in camera coordinates
+        plane_origin = tvec.flatten()
+        
+        # Determine output size
+        if output_size is None:
+            # Compute from plane_extent and a reasonable pixel density
+            pixels_per_meter = 200  # Adjust based on desired resolution
+            output_width = int(plane_extent_meters[0] * pixels_per_meter)
+            output_height = int(plane_extent_meters[1] * pixels_per_meter)
+        else:
+            output_width, output_height = output_size
+        
+        # Create a grid of 3D points on the marker plane
+        # Points are in the marker's local coordinate system
+        grid_size = 20  # Number of grid points per dimension
+        plane_width, plane_height = plane_extent_meters
+        
+        # Generate grid points in marker coordinate system (centered at origin)
+        x_range = np.linspace(-plane_width/2, plane_width/2, grid_size)
+        y_range = np.linspace(-plane_height/2, plane_height/2, grid_size)
+        xx, yy = np.meshgrid(x_range, y_range)
+        zz = np.zeros_like(xx)  # All points on z=0 plane
+        
+        # Reshape to list of 3D points
+        plane_points_3d = np.stack([xx.flatten(), yy.flatten(), zz.flatten()], axis=1).astype(np.float32)
+        
+        # Transform plane points to camera coordinate system
+        # plane_point_camera = R @ plane_point_local + tvec
+        plane_points_camera = (R @ plane_points_3d.T).T + plane_origin
+        
+        # Project 3D points to image coordinates
+        plane_points_2d, _ = cv.projectPoints(
+            plane_points_3d.reshape(-1, 1, 3),
+            rvec, tvec,
+            new_camera_matrix if undistort else self.camera_matrix,
+            np.zeros(4) if undistort else self.dist_coeffs  # No distortion if already undistorted
+        )
+        plane_points_2d = plane_points_2d.reshape(-1, 2)
+        
+        # Create corresponding destination points in output image
+        # Map plane coordinates to output image coordinates
+        x_norm = (xx.flatten() + plane_width/2) / plane_width  # 0 to 1
+        y_norm = (yy.flatten() + plane_height/2) / plane_height  # 0 to 1
+        
+        dst_points = np.stack([
+            x_norm * output_width,
+            y_norm * output_height
+        ], axis=1).astype(np.float32)
+        
+        # Filter out points that are outside image bounds
+        h, w = working_image.shape[:2]
+        valid_mask = (
+            (plane_points_2d[:, 0] >= 0) & (plane_points_2d[:, 0] < w) &
+            (plane_points_2d[:, 1] >= 0) & (plane_points_2d[:, 1] < h)
+        )
+        
+        if np.sum(valid_mask) < 4:
+            # Not enough valid points, return original image
+            return image
+        
+        valid_src = plane_points_2d[valid_mask]
+        valid_dst = dst_points[valid_mask]
+        
+        # Compute homography from image to plane coordinates
+        # Using RANSAC for robustness
+        H, mask = cv.findHomography(valid_src, valid_dst, 
+                                   cv.RANSAC, 
+                                   ransacReprojThreshold=5.0)
+        
+        if H is None:
+            return image
+        
+        # Apply transformation to entire image
+        warped_image = cv.warpPerspective(working_image, H, (output_width, output_height),
+                                         flags=cv.INTER_LINEAR,
+                                         borderMode=cv.BORDER_CONSTANT,
+                                         borderValue=(0, 0, 0))
+        
+        return warped_image
+    
+    def transform_point_to_marker_plane(self,
+                                       point_2d: Tuple[float, float],
+                                       marker_poses: List[Dict],
+                                       marker_size_meters: float,
+                                       plane_extent_meters: Tuple[float, float] = (2.0, 1.0),
+                                       output_size: Optional[Tuple[int, int]] = None) -> Optional[Tuple[float, float]]:
+        """
+        Transform a single point from image coordinates to marker plane coordinates.
+        
+        Args:
+            point_2d: (x, y) point in image coordinates
+            marker_poses: List of marker pose dictionaries
+            marker_size_meters: Physical size of markers in meters
+            plane_extent_meters: (width, height) of the plane in meters
+            output_size: Output image size. If None, computed from plane_extent
+            
+        Returns:
+            (x, y) in marker plane coordinates, or None if transformation fails
+        """
+        if len(marker_poses) < 1:
+            return None
+        
+        # This is a simplified version - in practice, you'd want to compute
+        # the homography once and reuse it, or use the 3D projection method
+        
+        # For now, use the same approach as transform_entire_image_to_marker_plane
+        # but just for a single point
+        reference_marker = marker_poses[0]
+        rvec = reference_marker['rvec']
+        tvec = reference_marker['tvec']
+        
+        # Back-project point to 3D ray, then intersect with plane
+        # This is more complex - for now, return None as placeholder
+        # TODO: Implement proper back-projection and plane intersection
+        return None
  
     

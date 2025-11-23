@@ -133,30 +133,34 @@ class PianoCalibration:
       print("ArUco markers found! Processing piano image...")
       
       # Transform to bird's eye view
-      birdseye_image = self.finger_tracker.transform_image_to_birdseye(image, undistort=True)
+      gray = cv.cvtColor(image, cv.COLOR_BGR2GRAY)  
+      birdseye_image = self.finger_tracker.transform_image_to_birdseye(gray, undistort=True)
       
-      # Convert to grayscale
-      gray = cv.cvtColor(birdseye_image, cv.COLOR_BGR2GRAY)
+      med_image = cv.medianBlur(birdseye_image, median_blur_size)
+
+      # Apply contrast enhancement using CLAHE (Contrast Limited Adaptive Histogram Equalization)
+      # This helps ridge detection work better on low-contrast images
+      clahe = cv.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+      gray_enhanced = clahe.apply(med_image)
       
-      # Apply median blur to reduce noise
+      # Apply median blur to reduce noise (re-enable this!)
       # Pad first to avoid edge artifacts
       pad_size = 2
-      gray_padded = cv.copyMakeBorder(gray, pad_size, pad_size, pad_size, pad_size, 
+      gray_padded = cv.copyMakeBorder(gray_enhanced, pad_size, pad_size, pad_size, pad_size, 
                                       cv.BORDER_REPLICATE)
-      med_image_padded = cv.medianBlur(gray_padded, median_blur_size)
       
-      cv.imshow('med_image_padded', med_image_padded)
-      cv.waitKey(0)
-      cv.destroyAllWindows()
+      if debug_mode:
+        cv.imshow('preprocessed (CLAHE + median blur)', gray_padded)
+        cv.waitKey(0)
+        cv.destroyAllWindows()
 
-      med_image = med_image_padded[pad_size:-pad_size, pad_size:-pad_size]
+      gray_enhanced = gray_padded[pad_size:-pad_size, pad_size:-pad_size]
       
 
       # Ridge detection
-      start_time = time.time()
-      
+
       # Pad image to avoid edge artifacts in ridge detection
-      med_image_padded = cv.copyMakeBorder(med_image, ridge_pad_size, ridge_pad_size, 
+      med_image_padded = cv.copyMakeBorder(gray_enhanced, ridge_pad_size, ridge_pad_size, 
                                           ridge_pad_size, ridge_pad_size, 
                                           cv.BORDER_REPLICATE)
       
@@ -167,8 +171,12 @@ class PianoCalibration:
       ridge_img = ridge_img_padded[ridge_pad_size:-ridge_pad_size, 
                                   ridge_pad_size:-ridge_pad_size]
       
+      # Apply Gaussian blur to smooth ridge response before thresholding
+      # This helps reduce noise in the ridge detection output
+      ridge_img = cv.GaussianBlur(ridge_img, (3, 3), 0)
       
       # Threshold with Otsu to create binary mask
+      # Otsu is the correct choice for ridge detection output (processed feature image)
       _, ridge_bin = cv.threshold(ridge_img, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU)
       
       if debug_mode:
@@ -176,7 +184,7 @@ class PianoCalibration:
           cv.waitKey(0)
           cv.destroyAllWindows()
       
-      return gray, ridge_bin
+      return birdseye_image, ridge_bin
   
   def _crop_marker_regions(self, mask: np.ndarray, 
                           mask_crop_pct: float = 0.1) -> Tuple[np.ndarray, int]:
@@ -222,11 +230,17 @@ class PianoCalibration:
     # Remove small noise using connected components instead of opening
     # Opening breaks connections, so we filter by area instead
     # This preserves line segments while removing isolated noise pixels
+    boundary_mask = cv.morphologyEx(boundary_mask, cv.MORPH_OPEN, cv.getStructuringElement(cv.MORPH_RECT, (1, 3)))
+
+    cv.imshow('boundary_mask', boundary_mask)
+    cv.waitKey(0)
+    cv.destroyAllWindows()
+
     num_labels, labels, stats, _ = cv.connectedComponentsWithStats(boundary_mask, connectivity=8)
     
     # Filter out small noise regions (keep only regions above threshold)
     # Adjust min_area based on your noise level - smaller values keep more, larger removes more
-    min_area = 120  # Minimum pixels to keep (removes isolated 1-2 pixel noise)
+    min_area = 200  # Minimum pixels to keep (removes isolated 1-2 pixel noise)
     walls_cleaned = np.zeros_like(boundary_mask)
     
     for label_id in range(1, num_labels):  # Skip background (label 0)
@@ -235,14 +249,14 @@ class PianoCalibration:
         # Keep this region
         walls_cleaned[labels == label_id] = 255
 
+    cv.imshow('walls_cleaned', walls_cleaned)
+    cv.waitKey(0)
+    cv.destroyAllWindows()
 
-    # Now proceed with closing operations to connect fragments
-    # Skip opening - it breaks connections. Use closing to connect instead.
-    walls_cleaned
-
+    
     # 1) Vertical closing: connects broken vertical boundary segments
     # Use a tall vertical line kernel to connect vertical gaps (most important for piano keys)
-    vertical_kernel = cv.getStructuringElement(cv.MORPH_RECT, (1, 5))  # 1 wide, 10 tall
+    vertical_kernel = cv.getStructuringElement(cv.MORPH_RECT, (1, 7))  # 1 wide, 10 tall
     walls_vertical_closed = cv.morphologyEx(walls_cleaned, cv.MORPH_CLOSE, vertical_kernel)
     
     
@@ -253,11 +267,12 @@ class PianoCalibration:
 
     # 2) Horizontal closing: connects broken horizontal boundary segments
     # Use a WIDE horizontal line kernel to connect horizontal gaps (top/bottom edges)
-    horizontal_kernel = cv.getStructuringElement(cv.MORPH_RECT, (5, 1))  # 5 wide, 1 tall
+    horizontal_kernel = cv.getStructuringElement(cv.MORPH_RECT, (3, 1))  # 5 wide, 1 tall
     walls_connected = cv.morphologyEx(walls_vertical_closed, cv.MORPH_CLOSE, horizontal_kernel)
     
+    # 3) Apply vertial closing
     # Apply multiple iterations for better connection
-    walls_connected = cv.morphologyEx(walls_connected, cv.MORPH_CLOSE, horizontal_kernel)
+    # walls_connected = cv.morphologyEx(walls_connected, cv.MORPH_CLOSE, horizontal_kernel)
     
     if debug_mode:
       cv.imshow('walls_vertical_and_horizontal', walls_connected)
@@ -271,8 +286,8 @@ class PianoCalibration:
     
     # 4) Opening on key regions: removes small artifacts inside keys (white specks)
     # This cleans up noise that appears as small white dots in the black key regions
-    artifact_removal_kernel = cv.getStructuringElement(cv.MORPH_RECT, (3, 3))
-    regions = cv.morphologyEx(regions, cv.MORPH_OPEN, artifact_removal_kernel, iterations=1)
+    # artifact_removal_kernel = cv.getStructuringElement(cv.MORPH_RECT, (3, 3))
+    # regions = cv.morphologyEx(regions, cv.MORPH_OPEN, artifact_removal_kernel, iterations=1)
     
 
     # 5) Slight dilation to recover area lost during wall dilation
@@ -361,7 +376,8 @@ class PianoCalibration:
             'y': y,
             'area': area
         }) 
-    # Sort keys by x (horizontal start of boundingRect)
+    # Sort keys backwards by x (horizontal start of boundingRect)
+    # The camera is facing the user
     # TODO: Make this more robust by requesting orientation of piano
     keys.sort(key=lambda k: k['bbox'][0], reverse=True)
     for k in keys:
@@ -457,7 +473,7 @@ class PianoCalibration:
       if result == 2:
         return result, None
       # Detect ridge mask
-      gray, ridge_mask = self._detect_ridge_mask(image, debug_mode=debug_mode)
+      _, ridge_mask = self._detect_ridge_mask(image, debug_mode=debug_mode)
       
 
       # Crop marker regions
@@ -497,24 +513,4 @@ class PianoCalibration:
       'cropped_mask': cropped_mask,
       'y_offset': y_offset
     }
-
-
-def main():
-  calib_npz = np.load(CAMERA_CALIBRATION_PATH)
-  camera_matrix = calib_npz["camera_matrix"]
-  dist_coeffs = calib_npz["dist_coeffs"]
-  pose_tracker = ArucoPoseTracker(camera_matrix, dist_coeffs, mode=TrackingMode.STATIC, marker_ids=MARKER_IDS)
-  finger_tracker = FingerArucoTracker(camera_matrix, dist_coeffs)
-  marker_size_meters = MARKER_SIZE*IN_TO_METERS
-  piano_calibrator = PianoCalibration(camera_matrix, dist_coeffs, pose_tracker, finger_tracker, MARKER_IDS, marker_size_meters)
-  
-  cap = cv.VideoCapture(0)
-  result, piano_calibration_result = piano_calibrator.get_piano_calibration(cap)
-
-  cv.waitKey(0)
-  cv.destroyAllWindows()
-
-
-if __name__ == "__main__":
-    main()
 
