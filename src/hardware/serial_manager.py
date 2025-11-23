@@ -17,6 +17,9 @@ from pathlib import Path
 
 from .protocols import GloveProtocol, AudioProtocol
 
+sys.path.append(str(Path(__file__).parent.parent.parent))
+from src.core.constants import SERIAL_BAUD_RATE, LEFT_PORT, RIGHT_PORT
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -32,7 +35,7 @@ class SerialManager:
     - Audio board: MIDI playback
     """
     
-    def __init__(self, glove_port: Optional[str] = None, 
+    def __init__(self, left_glove_port: Optional[str] = None, right_glove_port: Optional[str] = None, 
                  audio_port: Optional[str] = None,
                  baud_rate: int = 115200,
                  auto_connect: bool = True):
@@ -46,7 +49,8 @@ class SerialManager:
             auto_connect: If True, automatically connect on init
         """
         self.baud_rate = baud_rate
-        self.glove_port = glove_port
+        self.left_glove_port = left_glove_port
+        self.right_glove_port = right_glove_port
         self.audio_port = audio_port
         
         # Serial connections
@@ -366,3 +370,49 @@ class SerialManager:
             'audio': self.audio_conn is not None and self.audio_conn.is_open
         }
 
+
+
+def handle_line(source_hand, line):
+    """
+    source_hand = 'L' or 'R' from WHICH TEENSY the packet came from
+    line = string message like: 'L Sensor 3'
+    """
+    print(f"Received from {source_hand}-Teensy:", line)
+
+    parts = line.split()
+    if len(parts) != 3:
+        print("Malformed packet:", line)
+        return
+
+    hand = parts[0]           # L or R, from firmware
+    event = parts[1]          # Sensor or SensorReleased
+    idx = int(parts[2])       # sensor index
+
+    if event == "Sensor": # we can use this to then map to cv calls to assign a note and play it
+        print(f"[{hand}] Sensor {idx} PRESSED") #instead of just printing out
+        # noteOn(hand, idx)
+
+    elif event == "SensorReleased": # this we can use to map to a note and turn it off
+        print(f"[{hand}] Sensor {idx} RELEASED") #instead of just printing it otu
+        # noteOff(hand, idx)
+
+
+def read_from_teensy(port, source_hand):
+    """Run in its own thread to read from a single teensy"""
+    ser = serial.Serial(port, SERIAL_BAUD_RATE)
+    print(f"Listening on {port} for {source_hand}-hand Teensy...")
+
+    while True:
+        try:
+            line = ser.readline().decode().strip()
+            handle_line(source_hand, line)
+        except Exception as e:
+            print(f"Error on {source_hand}-hand port: {e}")
+
+
+# both serial listeners
+left_thread = threading.Thread(target=read_from_teensy, args=(LEFT_PORT, 'L'))
+right_thread = threading.Thread(target=read_from_teensy, args=(RIGHT_PORT, 'R'))
+
+left_thread.start()
+right_thread.start()
