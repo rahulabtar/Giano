@@ -8,17 +8,21 @@ class FingerArucoTracker(ArucoPolygonDetector):
     def __init__(self, 
                  camera_matrix:np.ndarray, 
                  dist_coeffs: np.ndarray, 
+                 image_size: Optional[Tuple[int, int]] = (640, 480),
                  output_size: Optional[Tuple[int, int]] = (640, 480),
-                 use_coordinate_correction: bool = True
+                 use_coordinate_correction: bool = True,
+                 correct_camera_distortion: bool = True
                  ):
         """
         Args:
             camera_matrix: The camera projection matrix from calibration
             dist_coeffs: The distortion coefficients from calibration
+            image_size: (width, height) of the input image (default: (640, 480))
             output_size: (width, height of the output size for birdseye transform)
             use_coordinate_correction: If True, use coordinate correction for the birdseye transform
+            correct_camera_distortion: If True, correct the distortion of the camera
         """
-        super().__init__(camera_matrix, dist_coeffs, output_size)
+        super().__init__(camera_matrix, dist_coeffs, image_size=image_size, output_size=output_size, correct_distortion=correct_camera_distortion)
         self.fingertip_ids = [4,8,12,16,20]
         self.keyboard_map = None
         self._y_scale_factor = None  # Cache for y-direction scale correction

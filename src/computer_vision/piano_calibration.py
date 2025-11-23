@@ -134,7 +134,7 @@ class PianoCalibration:
       
       # Transform to bird's eye view
       gray = cv.cvtColor(image, cv.COLOR_BGR2GRAY)  
-      birdseye_image = self.finger_tracker.transform_image_to_birdseye(gray, undistort=True)
+      birdseye_image = self.finger_tracker.transform_image_to_birdseye(gray)
       
       med_image = cv.medianBlur(birdseye_image, median_blur_size)
 

@@ -2,8 +2,7 @@
 
 ## Problem
 When the camera is not directly above the keyboard, the perspective transformation introduces non-uniform scaling in both x and y directions. This causes:
-- Moving upward in physical space changes the y-coordinate in bird's-eye view
-- X-coordinate distortion also exists
+- X-coordinate distortion occurs towards the edges of the frame, due to camera positioning 
 - Distance calculations become biased
 
 ## Solutions

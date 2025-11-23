@@ -7,14 +7,16 @@ from typing import List, Optional, Tuple, Dict
 class ArucoPolygonDetector:
     """Utility class for detecting polygons formed by ArUco markers."""
     
-    def __init__(self, camera_matrix:np.ndarray, dist_coeffs: np.ndarray, output_size: Optional[Tuple[int, int]] = (640, 480)):
+    def __init__(self, camera_matrix:np.ndarray, dist_coeffs: np.ndarray, image_size: Optional[Tuple[int, int]] = (640, 480), output_size: Optional[Tuple[int, int]] = (640, 480), correct_distortion: bool = True):
         """
         Initialize with a pose tracker instance.
         
         Args:
             camera_matrix: The camera projection matrix from calibration
             dist_coeffs: The distortion coefficients from calibration
+            image_size: (width, height) of the input image (default: (640, 480))
             output_size: (width, height) for bird's-eye view transform (default: (640, 480))
+            correct_distortion: If True, correct the distortion of the image before transforming
         """
 
         # parameters for the camera calibration
@@ -22,10 +24,23 @@ class ArucoPolygonDetector:
         self.dist_coeffs = dist_coeffs
         self.polygon = None
         self.output_size = output_size
+        self._correct_distortion = correct_distortion
+        
 
+        # parameters for image transformation and distortion correction
         self.birdseye_perspective_matrix = None
         self.new_camera_matrix = None  # Store for re-applying distortion if needed
         
+        if self._correct_distortion:
+            # getOptimalNewCameraMatrix returns (new_camera_matrix, roi)
+            # We only need the matrix, not the ROI
+            new_camera_matrix, roi = cv.getOptimalNewCameraMatrix(
+                self.camera_matrix, self.dist_coeffs, image_size, 0.9, image_size
+            )
+            self.new_camera_matrix = new_camera_matrix
+        else:
+            self.new_camera_matrix = self.camera_matrix
+
         # Pre-compute destination points for bird's-eye transform
         if output_size is not None:
             output_width, output_height = output_size
@@ -142,6 +157,7 @@ class ArucoPolygonDetector:
         
         return new_image
     
+
     def _compute_output_size_from_polygon(self, src_points: np.ndarray, target_height: int = 480) -> Tuple[int, int]:
         """
         Compute output size that preserves the aspect ratio of the keyboard polygon.
@@ -173,6 +189,7 @@ class ArucoPolygonDetector:
         
         return output_width, output_height
     
+
     def _update_output_size_from_polygon(self):
         """
         Update output_size to preserve the aspect ratio of the stored polygon.
@@ -194,7 +211,7 @@ class ArucoPolygonDetector:
             [0, output_height]
         ], dtype=np.float32)
     
-    def transform_image_to_birdseye(self, image: np.ndarray, undistort: bool = True, 
+    def transform_image_to_birdseye(self, image: np.ndarray, 
                                    use_polygon_aspect_ratio: bool = True) -> np.ndarray:
         """
         Transform the camera view to show the piano surface from directly above.
@@ -214,18 +231,13 @@ class ArucoPolygonDetector:
         if len(self.polygon) != 4 or np.array_equal(self.polygon, [0,0,0,0]):
             return image
         
-        self._correct_distortion = undistort
 
         # Undistort image if requested
-        if undistort:
+        if self._correct_distortion:
             # Get optimal new camera matrix for undistortion (removes black borders)
             # alpha=0.8: slightly more aggressive cropping to remove edge distortion
-            h, w = image.shape[:2]
-            new_camera_matrix, roi = cv.getOptimalNewCameraMatrix(
-                self.camera_matrix, self.dist_coeffs, (w, h), 0.9, (w, h)
-            )
-            self.new_camera_matrix = new_camera_matrix  # Store for potential re-distortion
-            undistorted_image = cv.undistort(image, self.camera_matrix, self.dist_coeffs, None, new_camera_matrix)
+            # Store for potential re-distortion
+            undistorted_image = cv.undistort(image, self.camera_matrix, self.dist_coeffs, None, self.new_camera_matrix)
             
             # Undistort polygon points to match undistorted image
             # Note: undistortPoints expects (N, 1, 2) format and returns normalized coordinates
@@ -235,7 +247,7 @@ class ArucoPolygonDetector:
                 polygon_array, 
                 self.camera_matrix, 
                 self.dist_coeffs,
-                P=new_camera_matrix
+                P=self.new_camera_matrix
             )
             # Reshape back to (N, 2) format
             src_points = undistorted_polygon.reshape(-1, 2).astype(np.float32)
@@ -375,8 +387,10 @@ class ArucoPolygonDetector:
                                                marker_poses: List[Dict],
                                                plane_extent_meters: Tuple[float, float] = (2.0, 1.0),
                                                output_size: Optional[Tuple[int, int]] = None,
-                                               undistort: bool = True) -> np.ndarray:
+                                               ) -> np.ndarray:
         """
+        CURRENTLY DEPRACATED
+        
         Project the entire image to a coordinate system defined by the ArUco marker plane.
         This creates a bird's-eye view of the entire scene, not just the marker polygon region.
         
@@ -393,16 +407,10 @@ class ArucoPolygonDetector:
             return image
         
         # Undistort image if requested
-        if undistort:
-            h, w = image.shape[:2]
-            new_camera_matrix, roi = cv.getOptimalNewCameraMatrix(
-                self.camera_matrix, self.dist_coeffs, (w, h), 0.9, (w, h)
-            )
-            self.new_camera_matrix = new_camera_matrix
-            working_image = cv.undistort(image, self.camera_matrix, self.dist_coeffs, None, new_camera_matrix)
+        if self._correct_distortion:
+            working_image = cv.undistort(image, self.camera_matrix, self.dist_coeffs, None, self.new_camera_matrix)
         else:
             working_image = image
-            new_camera_matrix = self.camera_matrix
         
         # Use the first marker to define the plane coordinate system
         # The marker's pose defines: origin at marker center, Z-axis normal to marker
@@ -453,8 +461,8 @@ class ArucoPolygonDetector:
         plane_points_2d, _ = cv.projectPoints(
             plane_points_3d.reshape(-1, 1, 3),
             rvec, tvec,
-            new_camera_matrix if undistort else self.camera_matrix,
-            np.zeros(4) if undistort else self.dist_coeffs  # No distortion if already undistorted
+            self.new_camera_matrix if self._correct_distortion else self.camera_matrix,
+            np.zeros(4) if self._correct_distortion else self.dist_coeffs  # No distortion if already undistorted
         )
         plane_points_2d = plane_points_2d.reshape(-1, 2)
         
@@ -484,6 +492,169 @@ class ArucoPolygonDetector:
         
         # Compute homography from image to plane coordinates
         # Using RANSAC for robustness
+        H, mask = cv.findHomography(valid_src, valid_dst, 
+                                   cv.RANSAC, 
+                                   ransacReprojThreshold=5.0)
+        
+        if H is None:
+            return image
+        
+        # Apply transformation to entire image
+        warped_image = cv.warpPerspective(working_image, H, (output_width, output_height),
+                                         flags=cv.INTER_LINEAR,
+                                         borderMode=cv.BORDER_CONSTANT,
+                                         borderValue=(0, 0, 0))
+        
+        return warped_image
+    
+    def transform_image_to_orthographic_plane(self,
+                                              image: np.ndarray,
+                                              marker_poses: List[Dict],
+                                              plane_extent_meters: Tuple[float, float] = (2.0, 1.0),
+                                              output_size: Optional[Tuple[int, int]] = None,
+                                              pixels_per_meter: float = 200.0) -> np.ndarray:
+        """
+        Create an improved projection onto the marker plane using 3D pose information.
+        
+        NOTE: True orthographic projection is not possible with a single perspective camera.
+        This method uses a dense grid of 3D points to compute a more accurate homography
+        that better accounts for the 3D geometry, reducing (but not eliminating) perspective distortion.
+        
+        The method:
+        1. Creates a dense grid of 3D points on the marker plane
+        2. Projects them to image coordinates using the camera's projection matrix
+        3. Uses these correspondences to compute a homography
+        4. Applies the homography to warp the image
+        
+        This gives better results than simple 4-point homography but still has some distortion
+        because the camera uses perspective projection.
+        
+        Args:
+            image: Input camera image
+            marker_poses: List of marker pose dictionaries with 'rvec', 'tvec', 'rotation_matrix'
+            plane_extent_meters: (width, height) of the plane in meters
+            output_size: Output image size. If None, computed from plane_extent and pixels_per_meter
+            pixels_per_meter: Pixel density for output image (default: 200 pixels/meter)
+            
+        Returns:
+            Projected image with reduced perspective distortion
+        """
+        if len(marker_poses) < 1:
+            return image
+        
+        # Undistort image if requested
+        if self._correct_distortion:
+            working_image = cv.undistort(image, self.camera_matrix, self.dist_coeffs, None, self.new_camera_matrix)
+            camera_matrix_to_use = self.new_camera_matrix
+            dist_coeffs_to_use = np.zeros(4)  # Already undistorted
+        else:
+            working_image = image
+            camera_matrix_to_use = self.camera_matrix
+            dist_coeffs_to_use = self.dist_coeffs
+        
+        # Use all markers to compute a better plane estimate
+        # Average the marker poses to get a more stable plane definition
+        if len(marker_poses) >= 4:
+            # Use all 4 markers to define the plane more accurately
+            # Average the rotation and translation
+            rvecs = [pose['rvec'] for pose in marker_poses[:4]]
+            tvecs = [pose['tvec'] for pose in marker_poses[:4]]
+            
+            # Average translation (center of plane)
+            avg_tvec = np.mean(tvecs, axis=0)
+            
+            # For rotation, average the rotation matrices
+            R_matrices = []
+            for pose in marker_poses[:4]:
+                R = pose.get('rotation_matrix')
+                if R is None:
+                    R, _ = cv.Rodrigues(pose['rvec'])
+                R_matrices.append(R)
+            
+            # Average rotation matrices (simple mean, then re-normalize)
+            avg_R = np.mean(R_matrices, axis=0)
+            # Re-orthonormalize the rotation matrix
+            U, _, Vt = np.linalg.svd(avg_R)
+            avg_R = U @ Vt
+            
+            # Convert back to rotation vector
+            avg_rvec, _ = cv.Rodrigues(avg_R)
+            
+            rvec = avg_rvec
+            tvec = avg_tvec
+            R = avg_R
+        else:
+            # Fall back to first marker if not enough markers
+            reference_marker = marker_poses[0]
+            rvec = reference_marker['rvec']
+            tvec = reference_marker['tvec']
+            R = reference_marker.get('rotation_matrix')
+            if R is None:
+                R, _ = cv.Rodrigues(rvec)
+        
+        # Determine output size
+        if output_size is None:
+            output_width = int(plane_extent_meters[0] * pixels_per_meter)
+            output_height = int(plane_extent_meters[1] * pixels_per_meter)
+        else:
+            output_width, output_height = output_size
+        
+        # Create a dense grid of 3D points on the marker plane
+        # More points = better homography, but slower computation
+        grid_density = 30  # Points per dimension
+        plane_width, plane_height = plane_extent_meters
+        
+        # Generate grid points in marker coordinate system (centered at origin)
+        # Output image: j (column) = horizontal, i (row) = vertical
+        # Marker: X = right, Y = down
+        # Correct mapping: Marker X -> Output j, Marker Y -> Output i
+        x_range = np.linspace(-plane_width/2, plane_width/2, grid_density)
+        y_range = np.linspace(-plane_height/2, plane_height/2, grid_density)
+        xx, yy = np.meshgrid(x_range, y_range)
+        zz = np.zeros_like(xx)  # All points on z=0 plane
+        
+        # Reshape to list of 3D points
+        # Marker X -> 3D X, Marker Y -> 3D Y (no swap needed)
+        plane_points_3d = np.stack([xx.flatten(), yy.flatten(), zz.flatten()], axis=1).astype(np.float32)
+        
+        # Project 3D points from marker's local coordinate system to image coordinates
+        plane_points_2d, _ = cv.projectPoints(
+            plane_points_3d.reshape(-1, 1, 3),
+            rvec,  # Marker's rotation (transforms from marker coords to camera coords)
+            tvec,  # Marker's translation (marker origin in camera coords)
+            camera_matrix_to_use,
+            dist_coeffs_to_use
+        )
+        plane_points_2d = plane_points_2d.reshape(-1, 2)
+        
+        # Create corresponding destination points in output image
+        # Map plane coordinates to output image coordinates
+        # Marker X (xx) -> Output j (column/horizontal)
+        # Marker Y (yy) -> Output i (row/vertical)
+        x_norm = (xx.flatten() + plane_width/2) / plane_width   # 0 to 1
+        y_norm = (yy.flatten() + plane_height/2) / plane_height  # 0 to 1
+        
+        # Correct mapping: x_norm -> j, y_norm -> i
+        dst_points = np.stack([
+            x_norm * output_width,   # j (column) - maps to marker X
+            y_norm * output_height   # i (row) - maps to marker Y
+        ], axis=1).astype(np.float32)
+        
+        # Filter out points that are outside image bounds
+        h, w = working_image.shape[:2]
+        valid_mask = (
+            (plane_points_2d[:, 0] >= 0) & (plane_points_2d[:, 0] < w) &
+            (plane_points_2d[:, 1] >= 0) & (plane_points_2d[:, 1] < h)
+        )
+        
+        if np.sum(valid_mask) < 4:
+            return image
+        
+        valid_src = plane_points_2d[valid_mask]
+        valid_dst = dst_points[valid_mask]
+        
+        # Compute homography from image to plane coordinates using dense correspondences
+        # This should give better results than 4-point homography
         H, mask = cv.findHomography(valid_src, valid_dst, 
                                    cv.RANSAC, 
                                    ransacReprojThreshold=5.0)

@@ -116,7 +116,10 @@ def main():
     # initialize aruco stuff
     tracker = HandTracker()
     aruco_pose_tracker = ArucoPoseTracker(camera_matrix, dist_coeffs, mode = TrackingMode.STATIC)
-    finger_aruco = FingerArucoTracker(camera_matrix, dist_coeffs)
+    finger_aruco = FingerArucoTracker(camera_matrix, dist_coeffs,
+                                      image_size = (int(cap.get(cv.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv.CAP_PROP_FRAME_HEIGHT))),
+                                      correct_camera_distortion = True)
+
     finger_tracker = FingerStateTracker(debounce_time=0.05)
     
     piano_calibrator = PianoCalibration(camera_matrix, 
@@ -278,10 +281,12 @@ def main():
                 finger_keys[lm_id] = midi_note
         
         if len(lm_list) > 0:
-            birdseye_image = finger_aruco.draw_birdseye_keys(image, lm_list, finger_keys)
+            # birdseye_image = finger_aruco.draw_birdseye_keys(image, lm_list, finger_keys)
+            birdseye_image = finger_aruco.transform_image_to_orthographic_plane(image, poses, plane_extent_meters=(2.0, 0.6), output_size=(1280, 720))
             # Resize for display if image is too large
-            display_image = resize_for_display(birdseye_image, max_width=1280, max_height=720)
-            cv.imshow("Birdseye", display_image)
+            # display_image = resize_for_display(birdseye_image, max_width=1280, max_height=720)
+            cv.imshow("Birdseye", birdseye_image)
+            cv.imshow("Original", image)
         else:
             cv.imshow("Video", image)
 
