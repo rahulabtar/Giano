@@ -8,20 +8,24 @@ class FingerArucoTracker(ArucoPolygonDetector):
     def __init__(self, 
                  camera_matrix:np.ndarray, 
                  dist_coeffs: np.ndarray, 
-                 output_size:tuple =(640,480)
+                 output_size: Optional[Tuple[int, int]] = (640, 480),
+                 use_coordinate_correction: bool = True
                  ):
         """
         Args:
             camera_matrix: The camera projection matrix from calibration
             dist_coeffs: The distortion coefficients from calibration
             output_size: (width, height of the output size for birdseye transform)
+            use_coordinate_correction: If True, use coordinate correction for the birdseye transform
         """
         super().__init__(camera_matrix, dist_coeffs, output_size)
         self.fingertip_ids = [4,8,12,16,20]
         self.keyboard_map = None
         self._y_scale_factor = None  # Cache for y-direction scale correction
         self._x_scale_factor = None  # Cache for x-direction scale correction
-        self._use_coordinate_correction = True  # Flag to enable coordinate correction
+        self._use_coordinate_correction = use_coordinate_correction  # Flag to enable coordinate correction
+        self.horizontal_weight = 2.0  # Weight for horizontal (x) distance (default: 2.0)
+        self.vertical_weight = 1.0   # Weight for vertical (y) distance (default: 1.0)
 
     def set_keyboard_map(self, labeled_keys: List[Dict]):
         """
@@ -94,7 +98,12 @@ class FingerArucoTracker(ArucoPolygonDetector):
             if result > 0:
                 return key['midi_note']
             
-            distance = np.linalg.norm(point - key['centroid'])
+            # Use weighted distance: weight horizontal more than vertical
+            centroid = np.array(key['centroid'])
+            dx = point[0] - centroid[0]
+            dy = point[1] - centroid[1]
+            distance = self._weighted_distance(dx, dy)
+            
             if distance < min_distance:
                 min_distance = distance
                 closest_midi_note = key['midi_note']
@@ -153,6 +162,20 @@ class FingerArucoTracker(ArucoPolygonDetector):
         """Get cached y-scale factor, computing it if necessary."""
         _, y_factor = self._get_scale_factors()
         return y_factor
+    
+    def _weighted_distance(self, dx: float, dy: float) -> float:
+        """
+        Compute weighted L2 distance, giving more weight to horizontal (x) distance.
+        This accounts for y-direction distortion in perspective projection.
+        
+        Args:
+            dx: Horizontal distance (x-direction)
+            dy: Vertical distance (y-direction)
+            
+        Returns:
+            Weighted distance: sqrt((w_x * dx)^2 + (w_y * dy)^2)
+        """
+        return np.sqrt((self.horizontal_weight * dx)**2 + (self.vertical_weight * dy)**2)
     
     def find_closest_key_by_boundary_distance(self, x_px: float, y_px: float) -> Optional[int]:
         """
@@ -256,14 +279,14 @@ class FingerArucoTracker(ArucoPolygonDetector):
             if result > 0:
                 return key['midi_note']
             
-            # Compute distance with y-correction
+            # Compute distance with y-correction and horizontal weighting
             # Apply scale factor to y-component to account for perspective distortion
             centroid = np.array(key['centroid'])
             dx = point[0] - centroid[0]
             dy = (point[1] - centroid[1]) * y_scale  # Apply correction to y-component
             
-            # Use corrected distance
-            distance = np.sqrt(dx**2 + dy**2)
+            # Use weighted distance (horizontal weighted more than vertical)
+            distance = self._weighted_distance(dx, dy)
             
             if distance < min_distance:
                 min_distance = distance
@@ -310,10 +333,10 @@ class FingerArucoTracker(ArucoPolygonDetector):
             if result > 0:
                 return key['midi_note']
             
-            # Compute distance with corrected coordinates
+            # Compute distance with corrected coordinates and horizontal weighting
             dx = point[0] - corrected_centroid[0]
             dy = point[1] - corrected_centroid[1]
-            distance = np.sqrt(dx**2 + dy**2)
+            distance = self._weighted_distance(dx, dy)
             
             if distance < min_distance:
                 min_distance = distance
@@ -323,7 +346,8 @@ class FingerArucoTracker(ArucoPolygonDetector):
     
     def measure_distance_to_key(self, x_px: float, y_px: float, midi_note: int) -> Optional[float]:
         """
-        Measure the distance to a given key in image space.
+        Measure the weighted distance to a given key in image space.
+        Horizontal distance is weighted more than vertical distance.
         """
         if self.keyboard_map is None:
             return None
@@ -331,7 +355,11 @@ class FingerArucoTracker(ArucoPolygonDetector):
         for key in self.keyboard_map:
             if key['midi_note'] == midi_note:
                 aruco_x, aruco_y = self.transform_point_from_image_to_birdseye((x_px, y_px))
-                return np.linalg.norm(np.array([aruco_x, aruco_y]) - np.array(key['centroid']))
+                point = np.array([aruco_x, aruco_y])
+                centroid = np.array(key['centroid'])
+                dx = point[0] - centroid[0]
+                dy = point[1] - centroid[1]
+                return self._weighted_distance(dx, dy)
     
     
     def _is_contour_closed(self, contour: np.ndarray) -> bool:

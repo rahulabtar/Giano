@@ -19,3 +19,5 @@ __pycache__
 
 #
 .DS_Store
+
+src/computer_vision/calibration_output/*

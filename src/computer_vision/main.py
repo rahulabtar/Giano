@@ -42,6 +42,37 @@ options = HandLandmarkerOptions(
 )
 
 
+def resize_for_display(image: np.ndarray, max_width: int = 1280, max_height: int = 720) -> np.ndarray:
+    """
+    Resize an image for display while maintaining aspect ratio.
+    
+    Args:
+        image: Input image (BGR or grayscale)
+        max_width: Maximum display width in pixels (default: 1280)
+        max_height: Maximum display height in pixels (default: 720)
+        
+    Returns:
+        Resized image that fits within max_width x max_height
+    """
+    if image is None:
+        return image
+    
+    h, w = image.shape[:2]
+    
+    # Calculate scaling factor to fit within max dimensions
+    scale_w = max_width / w if w > max_width else 1.0
+    scale_h = max_height / h if h > max_height else 1.0
+    scale = min(scale_w, scale_h)
+    
+    # Only resize if scaling is needed
+    if scale < 1.0:
+        new_width = int(w * scale)
+        new_height = int(h * scale)
+        return cv.resize(image, (new_width, new_height), interpolation=cv.INTER_AREA)
+    
+    return image
+
+
 def main():
     # Choose which camera to use. Default for computer onboard webcam is 0
     # available_cams = test_available_cams(2)
@@ -127,7 +158,7 @@ def main():
     prev_time = 0
     poses_list = []
 
-    status, piano_calibration_result = piano_calibrator.get_piano_calibration(cap, debug_mode=True)
+    status, piano_calibration_result = piano_calibrator.get_piano_calibration(cap, debug_mode=False)
     if status == 2:
         print("Calibration cancelled by user")
         return
@@ -159,7 +190,7 @@ def main():
                 # image = cv.drawFrameAxes(image, camera_matrix, dist_coeffs, pose['rvec'], pose['tvec'], 0.1, 10)
             
             # Aruco polygon
-            success, _ = finger_aruco.get_marker_polygon(MARKER_IDS, poses, store_polygon=True)
+            success, _ = finger_aruco.get_marker_polygon(MARKER_IDS, poses)
             image = finger_aruco.draw_box(image)
 
       
@@ -248,7 +279,9 @@ def main():
         
         if len(lm_list) > 0:
             birdseye_image = finger_aruco.draw_birdseye_keys(image, lm_list, finger_keys)
-            cv.imshow("Birdseye", birdseye_image)
+            # Resize for display if image is too large
+            display_image = resize_for_display(birdseye_image, max_width=1280, max_height=720)
+            cv.imshow("Birdseye", display_image)
         else:
             cv.imshow("Video", image)
 

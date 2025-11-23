@@ -123,7 +123,7 @@ class PianoCalibration:
       # Get ArUco marker poses and polygon
       poses = self.pose_tracker.get_marker_poses(image, marker_size_meters=MARKER_SIZE*IN_TO_METERS)
       success, marker_list_2d = self.finger_tracker.get_marker_polygon(
-          self.marker_ids, poses, store_polygon=True
+          self.marker_ids, poses
       )
       
       # Check if markers were found
