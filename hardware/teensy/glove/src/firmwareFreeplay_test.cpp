@@ -11,16 +11,13 @@ FREEPLAY MODE Firmware
 */
 
 #include <Arduino.h>
+#include <types.h>
 
 // HAND RELATED ENUM
-enum HAND
-{
-  LEFT = 0,
-  RIGHT,
-};
+
 
 // THIS WILL BE FOR LEFT HAND
-#define TEENSY_HAND HAND::LEFT
+#define TEENSY_HAND Hand::Left
 
 // BUTTON / MODE RELATED VARIABLES
 const int BUTTON_MODE = 2;
@@ -108,7 +105,7 @@ void loop() {
 
 // TODO: Write equation for determining velostat resistance
 void checkFingerPress() {
-  for (int i = 0; i < NUM_VELOSTAT; i++) {
+  for (unsigned int i = 0; i < NUM_VELOSTAT; i++) {
     int raw = analogRead(VELOSTAT_PINS[i]);
     bool currentlyPressed = raw >= (gBaseline[i] + THRESHOLD);
 
@@ -119,8 +116,8 @@ void checkFingerPress() {
     
       // SENDS TO RASPI
       Serial.write((u_int8_t)TEENSY_HAND);
-      Serial.print(" Sensor ");
-      Serial.println(i);      // debug
+      Serial.write(SensorValue::Pressed);
+      Serial.write(i);
 
       gSensorState[i] = true;  // remember it's pressed
     } 
@@ -130,9 +127,9 @@ void checkFingerPress() {
       Serial1.println(i);     // send "note off" to receiver
 
       // SENDING IT TO RASPI
-      Serial.print((u_int8_t)TEENSY_HAND);
-      Serial.print("SensorReleased ");
-      Serial.println(i);     // send "note off" to receiver
+      Serial.write((u_int8_t)TEENSY_HAND);
+      Serial.write(SensorValue::Released);
+      Serial.write(i);     // send "note off" to receiver
 
       gSensorState[i] = false; // update state
     }
