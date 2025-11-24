@@ -51,7 +51,7 @@ void setup() {
   delay(3000);
 
   // send one confirmation byte to the RasPi 
-  Serial.println(TEENSY_HAND);
+  Serial.write(TEENSY_HAND);
 
   // BUTTON SETUP: INTEGRATE THIS WITH VOICE COMMANDS PLS AND THANKS
   pinMode(BUTTON_MODE, INPUT_PULLUP);
