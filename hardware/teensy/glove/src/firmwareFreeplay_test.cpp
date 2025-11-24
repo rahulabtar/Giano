@@ -10,8 +10,17 @@ FREEPLAY MODE Firmware
 
 */
 
-// HAND RELATED VARIABLE
-#define HAND "L"
+#include <Arduino.h>
+
+// HAND RELATED ENUM
+enum HAND
+{
+  LEFT = 0,
+  RIGHT,
+};
+
+// THIS WILL BE FOR LEFT HAND
+#define TEENSY_HAND HAND::LEFT
 
 // BUTTON / MODE RELATED VARIABLES
 const int BUTTON_MODE = 2;
@@ -19,7 +28,7 @@ const int BUTTON_SONG = 3;
 
 
 
-bool freeplayMode = true; // THIS IS JUST FOR TESTING THE INTERRUPT OF THIS VERSION. IN THE REAL FIRMWARE WE WILL JUST WIND UP SWITCHING MODES NOT EXITING
+bool gFreeplayMode = true; // THIS IS JUST FOR TESTING THE INTERRUPT OF THIS VERSION. IN THE REAL FIRMWARE WE WILL JUST WIND UP SWITCHING MODES NOT EXITING
 
 
 // VELOSTAT VARIABLES
@@ -30,11 +39,11 @@ const int THRESHOLD = 45; // threshold for pressed/unpressed
 const int ADC_BITS = 12;
 
 // to collect baseline readings 
-int baseline[NUM_VELOSTAT];
+int gBaseline[NUM_VELOSTAT];
 
-bool pressed = false;
+bool gPressed = false;
 
-bool sensorState[NUM_VELOSTAT] = {false, false};
+bool gSensorState[NUM_VELOSTAT] = {false, false};
 
 // ADD HAPTICS SHIT HERE FOR LEARNING MODE
 
@@ -44,6 +53,8 @@ void setup() {
 
   delay(3000);
 
+  // send one confirmation byte to the RasPi 
+  Serial.println(TEENSY_HAND);
 
   // BUTTON SETUP: INTEGRATE THIS WITH VOICE COMMANDS PLS AND THANKS
   pinMode(BUTTON_MODE, INPUT_PULLUP);
@@ -64,28 +75,28 @@ void setup() {
       delay(5);
     }
 
-    baseline[i] = sum / SAMPLERATE; 
+    gBaseline[i] = sum / SAMPLERATE; 
 
     Serial.print("Baseline for sensor");
     Serial.print(i);
     Serial.print(" = ");
-    Serial.println(baseline[i]);
+    Serial.println(gBaseline[i]);
   }
 }
 
 void loop() {
   // put your main code here, to run repeatedly:
-  if(!freeplayMode) {
+  if(!gFreeplayMode) {
     // this is just a debug statement, should NEVER reach this if setup is properly communicated.
     Serial.println("NOT IN FREEPLAY MODE SOMETHING IS WRONG for this test");
   }
 
   if(digitalRead(BUTTON_MODE) == LOW) {
     Serial.println("SWITCHING MODE");
-    if(freeplayMode) {
-      freeplayMode = false; // if true set to false
-    } else if (!freeplayMode) {
-      freeplayMode = true; // if false set it to true
+    if(gFreeplayMode) {
+      gFreeplayMode = false; // if true set to false
+    } else if (!gFreeplayMode) {
+      gFreeplayMode = true; // if false set it to true
     }
     delay(200); // debounce time for button logic
   }
@@ -95,35 +106,37 @@ void loop() {
 }
 
 
-
+// TODO: Write equation for determining velostat resistance
 void checkFingerPress() {
   for (int i = 0; i < NUM_VELOSTAT; i++) {
     int raw = analogRead(VELOSTAT_PINS[i]);
-    bool currentlyPressed = raw >= (baseline[i] + THRESHOLD);
+    bool currentlyPressed = raw >= (gBaseline[i] + THRESHOLD);
 
     // transition: unpressed -> pressed
-    if (currentlyPressed && !sensorState[i]) {
+    if (currentlyPressed && !gSensorState[i]) {
       Serial1.print("Sensor ");
       Serial1.println(i);     // send "note on" to receiver
+    
       // SENDS TO RASPI
-      Serial.print(HAND);
-      Serial.print("Sensor ");
+      Serial.write((u_int8_t)TEENSY_HAND);
+      Serial.print(" Sensor ");
       Serial.println(i);      // debug
 
-      sensorState[i] = true;  // remember it's pressed
+      gSensorState[i] = true;  // remember it's pressed
     } 
     // transition: pressed -> released
-    else if (!currentlyPressed && sensorState[i]) {
+    else if (!currentlyPressed && gSensorState[i]) {
       Serial1.print("SensorReleased ");
       Serial1.println(i);     // send "note off" to receiver
 
       // SENDING IT TO RASPI
-      Serial.print(HAND);
+      Serial.print((u_int8_t)TEENSY_HAND);
       Serial.print("SensorReleased ");
       Serial.println(i);     // send "note off" to receiver
 
-      sensorState[i] = false; // update state
+      gSensorState[i] = false; // update state
     }
+
     // if pressed and already marked as pressed, do nothing
   }
 
