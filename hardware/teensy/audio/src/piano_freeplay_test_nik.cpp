@@ -8,7 +8,6 @@
 TeensyPiano piano;
 std::vector<AudioConnection> pianoConnectors;
 
-
 AudioControlSGTL5000 audioShield;
 AudioOutputI2S i2sOutput;
 
@@ -21,6 +20,16 @@ int sensorToNote[NUM_SENSORS] = {
   60, 
   71  
 };
+
+enum AudioStates {
+  AUDIO_HAT_WELCOME = 0,
+  MODE_SELECT,
+  VELOSTAT_CALIBRATION,
+  PLAYING_MODE_FREEPLAY,
+  PLAYING_MODE_LEARNING
+};
+
+AudioStates gCurSystemState = AUDIO_HAT_WELCOME;
 
 void setup() {
 
@@ -46,9 +55,30 @@ void setup() {
 
 
 void loop() {
+
+  switch(gCurSystemState) {
+    case(AUDIO_HAT_WELCOME):
+      
+      break;
+
+    case(MODE_SELECT):
+      break;
+    
+    case(VELOSTAT_CALIBRATION):
+      break;
+
+    case(PLAYING_MODE_FREEPLAY):
+      break;
+
+    case(PLAYING_MODE_LEARNING):
+      break;
+
+
+  };
+  
   // checkSerial1ForSensorMessages();
   //autoNoteOffHandler();
-  Serial.println("in loop");
+
 }
 
 void readSerialMessages() {
@@ -93,7 +123,6 @@ void readSerialMessages() {
         }
     }
 }
-
 
 
 
