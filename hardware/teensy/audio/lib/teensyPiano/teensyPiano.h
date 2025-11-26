@@ -1,4 +1,5 @@
 #pragma once
+
 #include "teensyPianoVoice.h"
 #include <vector>
 #include <math.h>
@@ -10,9 +11,13 @@ class TeensyPiano{
 
     //this method will turn on voice {idx}
     void voiceOn(unsigned int idx, byte midiNote, u_int8_t vel);
+    
+    // this method will turn off voice {idx}
     void voiceOff(unsigned int idx);
-    AudioMixer4 piano_mixer_out;
 
+    bool areVoicesOn();
+    AudioMixer4 piano_mixer_out;
+    ~TeensyPiano();
   
   private:
     std::vector<TeensyPianoVoice> voices_;

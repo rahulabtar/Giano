@@ -41,3 +41,7 @@ void TeensyPiano::voiceOn(unsigned int idx, byte midiNote, u_int8_t vel) {
 void TeensyPiano::voiceOff(unsigned int idx) {
   voices_[idx].noteOff();
 }
+
+TeensyPiano::~TeensyPiano() {
+  
+}

@@ -39,20 +39,21 @@ void setup() {
   i2sCord.connect(piano.piano_mixer_out, 0, i2sOutput, 0);
   i2sCord.connect(piano.piano_mixer_out, 0, i2sOutput, 1);
 
-  audioShield.enable();
-  audioShield.volume(0.4);
+  // audioShield.enable();
+  // audioShield.volume(0.4);
 
 }
 
 
 void loop() {
-  checkSerial1ForSensorMessages();
+  // checkSerial1ForSensorMessages();
   //autoNoteOffHandler();
+  Serial.println("in loop");
 }
 
-void checkSerial1ForSensorMessages() {
-  while (Serial1.available()) {
-    char c = Serial1.read();
+void readSerialMessages() {
+  while (Serial.available()) {
+    byte c = Serial.read();
     static String msg = "";
     if (c == '\n') {
       msg.trim();
@@ -67,7 +68,6 @@ void checkSerial1ForSensorMessages() {
           u_int8_t vel = 70;
           Serial.printf("Trigger from Sensor %d → Note %d\n", idx, midiNote);
           piano.voiceOn(idx, midiNote, vel);
-          gIsNoteOn[idx] = true;
 
         }
       }
@@ -79,9 +79,9 @@ void checkSerial1ForSensorMessages() {
         if (idx >= 0 && idx < NUM_SENSORS && gIsNoteOn[idx]) { 
           int midiNote = sensorToNote[idx];
           Serial.printf("Release from Sensor %d → Note %d\n", idx, midiNote);
-          piano[idx].noteOff();
+          piano.voiceOff(idx);
           
-          Serial.printf("Note OFF: Ch %d, Note %d\n", channel, note);
+          // Serial.printf("Note OFF: Ch %d, Note %d\n", channel, note);
 
           gIsNoteOn[idx] = false;
         }
@@ -93,6 +93,8 @@ void checkSerial1ForSensorMessages() {
         }
     }
 }
+
+
 
 
 /*void autoNoteOffHandler() {
