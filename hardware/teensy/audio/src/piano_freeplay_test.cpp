@@ -1,4 +1,4 @@
-#include <Arduino.h>
+/*#include <Arduino.h>
 #include <Audio.h>
 #include <Wire.h>
 #include <SPI.h>
@@ -175,4 +175,5 @@ void checkSerial1ForSensorMessages() {
   }
 }
 */
+/**/
 

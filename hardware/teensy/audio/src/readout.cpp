@@ -1,3 +1,5 @@
+/*
+
 // Simple WAV file player + test sine tone in setup()
 
 #include <Audio.h>
@@ -73,3 +75,4 @@ void loop() {
 //   playInstr("CONFSONG.wav");
 //   playInstr("CONFIRM.wav");
 
+*/
