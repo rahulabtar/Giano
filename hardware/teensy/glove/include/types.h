@@ -2,8 +2,8 @@
 
 enum Hand
 {
-  Left = 0,
-  Right,
+  Left = 0xFE,
+  Right
 };
 
 enum SensorValue
