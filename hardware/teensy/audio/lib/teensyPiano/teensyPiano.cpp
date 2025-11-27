@@ -34,7 +34,7 @@ int TeensyPiano::setup(unsigned int n_voices) {
   return 0;
 }
 
-void TeensyPiano::voiceOn(unsigned int idx, byte midiNote, u_int8_t vel) {
+void TeensyPiano::voiceOn(unsigned int idx, u_int8_t midiNote, u_int8_t vel) {
   voices_[idx].noteOn(midiNote, vel);
 }
 

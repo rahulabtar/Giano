@@ -14,7 +14,7 @@ class TeensyPianoVoice
     void setup();
 
     // Note on function
-    void noteOn(byte note, u_int8_t velocity);
+    void noteOn(u_int8_t note, u_int8_t velocity);
     void noteOff();
 
     // Returns true if noteOn was called without accompanying noteOff

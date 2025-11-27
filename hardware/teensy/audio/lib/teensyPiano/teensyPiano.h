@@ -10,7 +10,7 @@ class TeensyPiano{
     int setup(unsigned int n_voices);
 
     //this method will turn on voice {idx}
-    void voiceOn(unsigned int idx, byte midiNote, u_int8_t vel);
+    void voiceOn(unsigned int idx, u_int8_t midiNote, u_int8_t vel);
     
     // this method will turn off voice {idx}
     void voiceOff(unsigned int idx);

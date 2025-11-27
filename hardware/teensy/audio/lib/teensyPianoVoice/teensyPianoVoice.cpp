@@ -2,6 +2,8 @@
 
 void TeensyPianoVoice::setup() {
   // setup envelopes
+  
+
   env_.attack(3 - (vel / 70));
   env_.decay(500);
   env_.sustain(0.5);
@@ -55,7 +57,7 @@ float TeensyPianoVoice::velocityToAmp(u_int8_t velocity, unsigned int scaling_fa
         logf(1.0f + scaling_factor);
 }
 
-void TeensyPianoVoice::noteOn(byte note, u_int8_t velocity) {
+void TeensyPianoVoice::noteOn(u_int8_t note, u_int8_t velocity) {
     
   // convert midi note number to frequency
   float freq = midiNoteToFreq(note);
