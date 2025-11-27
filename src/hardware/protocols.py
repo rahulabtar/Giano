@@ -11,24 +11,46 @@ from enum import Enum, IntEnum
 from typing import Optional, Tuple, Dict, Any
 import numpy as np
 
+
+class Hand(IntEnum):
+    LEFT = 0
+    RIGHT = 1
+
+class SensorValue(IntEnum):
+    Pressed=0
+    Released=1
+
+
+# TODO: make sure I need to have this
+class SensorNumberLeft(IntEnum):
+    Thumb=0
+    Index=1
+    Middle=2
+    Ring=3
+    Pinky=4
+
+class PlayMode(Enum):
+    LEARNING_MODE = 0
+    FREEPLAY_MODE = 1
+
 """The finger instruction set will be sent back to Python
 from the Teensy once the velostat has detected a finger press.
 Python will forward this information to the audio Teensy to play the note.
 """
 
-class FingerInstructionSet_learningMode:
+
+class LearningModeGloveInstructionSet:
     fingerNumber: np.uint8
     midiNote: np.uint8  
     commandCode: np.uint8
     distanceToNote: np.float32
 
-class FingerInstructionSet_freeplayMode:
-    fingerNumber: np.uint8
-    midiNote: np.uint8  
+# Matched to firmware
+class FreeplayModeGloveInstructionSet:
+    hand: Hand
+    sensorValue: SensorValue
+    sensorNumber: SensorNumberLeft
 
-class PlayMode(Enum):
-    FREEPLAY_MODE = 0
-    LEARNING_MODE = 1
 
 """The octave instruction set will be sent back to Python
 from the Teensy once the hand position has been detected.
@@ -60,7 +82,31 @@ class MIDIControl(IntEnum):
     CONTROL_CHANGE = 0xB0
 
 
-class GloveProtocol:
+class GloveProtocolFreeplayMode:
+    """Protocol handler for glove controller communication."""
+    
+    # 3-byte message: [fingerInstructionSet]
+    PACK_FORMAT = 'BBB'  # 3 unsigned bytes
+    MESSAGE_SIZE = 3
+    
+
+    @staticmethod
+    def pack(instruction_set: FreeplayModeGloveInstructionSet) -> bytes:
+        pass
+    
+    @staticmethod
+    def unpack(message: bytes) -> FreeplayModeGloveInstructionSet:
+        message_tuple = struct.unpack(GloveProtocolFreeplayMode.PACK_FORMAT, message)
+        
+        return FreeplayModeGloveInstructionSet(
+            hand=message_tuple[0],
+            sensorValue=message_tuple[1],
+            sensorNumber=message_tuple[2]
+        )
+
+
+
+class GloveProtocolLearningMode:
     """Protocol handler for glove controller communication."""
     
     # 3-byte message: [fingerInstructionSet]

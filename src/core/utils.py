@@ -7,6 +7,8 @@ import json
 import numpy as np
 from pathlib import Path
 from typing import Dict, Any, Optional
+from src.core.constants import NAMES
+from typing import Tuple
 
 def get_project_root() -> Path:
     """Get the absolute path to the project root directory."""
@@ -46,3 +48,8 @@ def velocity_to_amplitude(velocity: int, scaling_factor: int = 5) -> float:
 def ensure_directory_exists(path: Path) -> None:
     """Ensure a directory exists, create if it doesn't."""
     path.mkdir(parents=True, exist_ok=True)
+
+def name_from_midi(m: int) -> Tuple[str,bool]:
+    n = NAMES[m % 12]
+    octave = (m // 12) - 1
+    return f"{n}{octave}", ('#' in n)

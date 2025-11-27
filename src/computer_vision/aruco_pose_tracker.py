@@ -40,6 +40,11 @@ class ArucoPoseTracker:
         self.enable_moving_average = True
         self.filter_window_size = 5  # Number of samples to average
         self.pose_history = {}  # Dict mapping marker_id -> list of historical poses
+        
+        # Adaptive image preprocessing configuration for high intensity changes
+        self.enable_adaptive_preprocessing = True
+        self.adaptive_thresh_block_size = 11  # Block size for adaptive threshold (must be odd)
+        self.adaptive_thresh_c = 2  # Constant subtracted from mean
     
 
 
@@ -73,9 +78,78 @@ class ArucoPoseTracker:
                   f"enforce_z_out={enforce_z_axis_out}, "
                   f"moving_avg={enable_moving_average}, window={self.filter_window_size}")
     
+    def configure_adaptive_preprocessing(self, 
+                                       enable: bool = True,
+                                       use_clahe: bool = True,
+                                       use_adaptive_threshold: bool = True,
+                                       use_histogram_equalization: bool = False,
+                                       use_gamma_correction: bool = True,
+                                       try_multiple_strategies: bool = True,
+                                       clahe_clip_limit: float = 2.0,
+                                       clahe_tile_size: Tuple[int, int] = (8, 8),
+                                       adaptive_thresh_block_size: int = 11,
+                                       adaptive_thresh_c: int = 2,
+                                       gamma_correction_value: float = 1.5):
+        """
+        Configure adaptive image preprocessing for handling high intensity changes.
+        Uses only adaptive thresholding for preprocessing.
+        
+        Args:
+            enable: Enable/disable adaptive preprocessing
+            adaptive_thresh_block_size: Block size for adaptive threshold (must be odd)
+            adaptive_thresh_c: Constant subtracted from mean in adaptive threshold
+            gamma_correction_value: Gamma value (1.0 = no change, >1.0 = brighter, <1.0 = darker)
+        """
+        self.enable_adaptive_preprocessing = enable
+        self.adaptive_thresh_block_size = max(3, adaptive_thresh_block_size | 1)  # Ensure odd
+        self.adaptive_thresh_c = adaptive_thresh_c
+        self.gamma_correction_value = gamma_correction_value
+        
+        if self.debug_filtering:
+            print(f"Adaptive preprocessing configured: enabled={enable}, "
+                  f"CLAHE={use_clahe}, adaptive_thresh={use_adaptive_threshold}, "
+                  f"hist_eq={use_histogram_equalization}, gamma={use_gamma_correction}, "
+                  f"multi_strategy={try_multiple_strategies}")
+    
+    def apply_clahe(self, gray: np.ndarray) -> np.ndarray:
+        """Apply Contrast Limited Adaptive Histogram Equalization."""
+        clahe = cv.createCLAHE(clipLimit=self.clahe_clip_limit, tileGridSize=self.clahe_tile_size)
+        return clahe.apply(gray)
+    
+    def apply_adaptive_threshold(self, gray: np.ndarray) -> np.ndarray:
+        """Apply adaptive thresholding."""
+        return cv.adaptiveThreshold(
+            gray, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY,
+            self.adaptive_thresh_block_size, self.adaptive_thresh_c
+        )
+    
+    def apply_histogram_equalization(self, gray: np.ndarray) -> np.ndarray:
+        """Apply global histogram equalization."""
+        return cv.equalizeHist(gray)
+    
+   
+    def detect_high_intensity_regions(self, gray: np.ndarray, threshold_percentile: float = 95.0) -> Tuple[bool, float]:
+        """
+        Detect if image has high intensity regions (like direct light).
+        
+        Args:
+            gray: Grayscale image
+            threshold_percentile: Percentile to use for high intensity detection
+            
+        Returns:
+            Tuple of (has_problematic_intensity, diagnostics_dict)
+            diagnostics_dict contains: intensity_percentile, overexposure_percentage, 
+            intensity_variance, mean_intensity, and reason for decision
+        """
+        intensity_value = np.percentile(gray, threshold_percentile)
+        has_high_intensity = intensity_value > 200  # Threshold for "very bright"
+        return has_high_intensity, intensity_value
+    
+
+    
     def detect_markers(self, image: np.ndarray) -> Tuple[List, List, List]:
         """
-        Detect ArUco markers in an image.
+        Detect ArUco markers in an image with adaptive preprocessing for high intensity changes.
         
         Args:
             image: Input image (BGR or grayscale)
@@ -89,8 +163,30 @@ class ArucoPoseTracker:
         else:
             gray = image
         
-        # Detect markers
+        # First, try detection on original image
         corners, ids, rejected = self.detector.detectMarkers(gray)
+        
+        # Check for problematic high intensity regions (distinguishes white paper from overexposure)
+        
+        # Only apply adaptive preprocessing if:
+        # 1. It's enabled AND
+        # 2. There's a problematic intensity situation (not just white paper) OR
+        # 3. Detection failed and we should try preprocessing as fallback
+        if ids is not None:
+            if len(ids) < 4:
+       
+            # Apply adaptive thresholding
+                processed = self.apply_adaptive_threshold(gray)
+                
+                # Detect markers with preprocessed image
+                corners_processed, ids_processed, rejected_processed = self.detector.detectMarkers(processed)
+                
+                # Use preprocessed results if they're better (found more markers)
+                if ids_processed is not None and len(ids_processed) > 0:
+                    if ids is None or len(ids) == 0 or len(ids_processed) > len(ids):
+                        corners, ids, rejected = corners_processed, ids_processed, rejected_processed
+                        if self.debug_filtering:
+                            print(f"Adaptive threshold improved detection: found {len(ids_processed)} markers")
         
         return corners, ids, rejected
     

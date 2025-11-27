@@ -30,7 +30,7 @@ try:
     from src.hardware.serial_manager import SerialManager
     from src.hardware.protocols import ActionCode
     from src.core.constants import MARKER_SIZE, MARKER_IDS, HAND_MODEL_PATH, CAMERA_CALIBRATION_PATH, IN_TO_METERS, PI
-
+    from src.core.utils import name_from_midi
 except ImportError as e:
     print(f"Could not import user stuff: {e}")
     raise
@@ -40,6 +40,37 @@ options = HandLandmarkerOptions(
     base_options=BaseOptions(model_asset_path=HAND_MODEL_PATH, delegate='GPU'), 
     running_mode='LIVE_STREAM'
 )
+
+
+def resize_for_display(image: np.ndarray, max_width: int = 1280, max_height: int = 720) -> np.ndarray:
+    """
+    Resize an image for display while maintaining aspect ratio.
+    
+    Args:
+        image: Input image (BGR or grayscale)
+        max_width: Maximum display width in pixels (default: 1280)
+        max_height: Maximum display height in pixels (default: 720)
+        
+    Returns:
+        Resized image that fits within max_width x max_height
+    """
+    if image is None:
+        return image
+    
+    h, w = image.shape[:2]
+    
+    # Calculate scaling factor to fit within max dimensions
+    scale_w = max_width / w if w > max_width else 1.0
+    scale_h = max_height / h if h > max_height else 1.0
+    scale = min(scale_w, scale_h)
+    
+    # Only resize if scaling is needed
+    if scale < 1.0:
+        new_width = int(w * scale)
+        new_height = int(h * scale)
+        return cv.resize(image, (new_width, new_height), interpolation=cv.INTER_AREA)
+    
+    return image
 
 
 def main():
@@ -85,19 +116,19 @@ def main():
     # initialize aruco stuff
     tracker = HandTracker()
     aruco_pose_tracker = ArucoPoseTracker(camera_matrix, dist_coeffs, mode = TrackingMode.STATIC)
-    aruco_polygon = ArucoPolygonDetector(camera_matrix, dist_coeffs)
-    finger_aruco = FingerArucoTracker()
+    finger_aruco = FingerArucoTracker(camera_matrix, dist_coeffs,
+                                      image_size = (int(cap.get(cv.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv.CAP_PROP_FRAME_HEIGHT))),
+                                      correct_camera_distortion = True)
+
     finger_tracker = FingerStateTracker(debounce_time=0.05)
     
     piano_calibrator = PianoCalibration(camera_matrix, 
                                         dist_coeffs, 
                                         aruco_pose_tracker, 
-                                        aruco_polygon, 
+                                        finger_aruco, 
                                         MARKER_IDS, 
                                         MARKER_SIZE*IN_TO_METERS,
                                         )
-
-    piano_detector = None  # Will be initialized when keyboard is detected
     
     # Configure pose filtering - you can experiment with these settings
     aruco_pose_tracker.configure_pose_filtering(
@@ -108,20 +139,36 @@ def main():
         enable_moving_average=True,     # Enable TRUE LTI moving average filter
         filter_window_size=20            # Number of samples to average (higher = smoother)
     )
+    
+    # Configure adaptive preprocessing for handling high intensity changes (direct light, etc.)
+    # This helps detect ArUco markers even when some regions are overexposed
+    aruco_pose_tracker.configure_adaptive_preprocessing(
+        enable=True,                    # Enable adaptive preprocessing
+        use_clahe=True,                 # Use CLAHE for local contrast enhancement
+        use_adaptive_threshold=False,    # Adaptive thresholding (usually too aggressive for ArUco)
+        use_histogram_equalization=False, # Global histogram equalization (can be too aggressive)
+        use_gamma_correction=True,       # Gamma correction for brightness adjustment
+        try_multiple_strategies=True,    # Try multiple strategies if detection fails
+        clahe_clip_limit=2.0,           # CLAHE clip limit (higher = more contrast)
+        clahe_tile_size=(8, 8),         # CLAHE tile size (smaller = more local adaptation)
+        gamma_correction_value=1.5      # Gamma value (>1.0 = brighter, <1.0 = darker)
+    )
 
    
 
     
     # FPS monitor setup
     prev_time = 0
-    i = 0
     poses_list = []
 
-    status, piano_calibration_result = piano_calibrator.get_piano_calibration(cap, debug_mode=True)
+    status, piano_calibration_result = piano_calibrator.get_piano_calibration(cap, debug_mode=False)
     if status == 2:
         print("Calibration cancelled by user")
         return
     
+    finger_aruco.set_keyboard_map(piano_calibration_result['labeled_keys'])
+    
+    frame_count = 0
     # MAIN LOOP
     while True:
         success, image = cap.read()
@@ -132,7 +179,8 @@ def main():
         
         
         # find aruco markers and FIFO marker poses list logic
-        if i % 60 == 0:
+        # TODO: look into Kalman filter for marker tracking
+        if frame_count % 30 == 0:
             if len(poses_list) > 0: last_poses = poses_list.pop()
             else: last_poses = None
             poses = aruco_pose_tracker.get_marker_poses(
@@ -145,58 +193,17 @@ def main():
                 # image = cv.drawFrameAxes(image, camera_matrix, dist_coeffs, pose['rvec'], pose['tvec'], 0.1, 10)
             
             # Aruco polygon
-            success, _ = aruco_polygon.get_marker_polygon(MARKER_IDS, poses, store_polygon=True)
-            image = aruco_polygon.draw_box(image)
+            success, _ = finger_aruco.get_marker_polygon(MARKER_IDS, poses)
+            image = finger_aruco.draw_box(image)
 
-     
-
-        
+      
             
-            i+=1
-            if i >= 60:
-                i=0
+            frame_count+=1
+            if frame_count >= 30:
+                frame_count=0
 
-        # find hands, return drawn image
-        # HAND FINDER PART
-        image = tracker.hands_finder(image)
-        lm_list, absolute_pos = tracker.position_finder(image, hand_no = 0, draw=False)
-        # if i % 10 == 0:
-        #     for landmark in lm_list:
-        #         print(f"Landmark: {landmark}")
-
-        for landmark in lm_list:
-            lm_id, x_px, y_px = landmark[0], landmark[1], landmark[2]
-            if lm_id in [4,8,12,16,20] and (x_px != 0 and y_px != 0):
-                aruco_coords = aruco_polygon.transform_point_from_image_to_birdseye((x_px,y_px))
-                print(f"Finger {lm_id}: Regular image coords {x_px, y_px}, Birdseye coords {aruco_coords}")
-
-        """
-        # Piano key detection
-        if piano_detector is not None and not np.array_equal(marker_centers_2d, [0,0,0,0]):
-            finger_keys = finger_aruco.get_finger_keys(lm_list, marker_centers_2d, piano_detector)
-            image = finger_aruco.draw_finger_keys(image, finger_keys, lm_list)
-            
-        else:
-            # Fallback to original coordinate display
-            for landmark in lm_list:
-                lm_id, x_px, y_px = landmark[0], landmark[1], landmark[2]
-                # fingertip IDs
-                if lm_id in [4,8,12,16,20]:
-                    aruco_coords = finger_aruco.transform_finger_to_aruco_space((x_px,y_px), marker_centers_2d)
-                    if aruco_coords is not None:
-                        print(f"Finger {lm_id}: ArUco coords {aruco_coords}")
         
         
-        for landmark in lm_list:
-                lm_id, x_px, y_px = landmark[0], landmark[1], landmark[2]
-                # fingertip IDs
-                if lm_id in [4,8,12,16,20]:
-                    aruco_coords = finger_aruco.transform_finger_to_aruco_space((x_px,y_px), aruco_polygon.polygon)
-                    if aruco_coords is not None:
-                        print(f"Finger {lm_id}: ArUco coords {aruco_coords}")
-
-        """
-       
 
         # Piano key detection and serial communication
         # if piano_detector is not None and not np.array_equal(aruco_polygon.polygon, [0,0,0,0]):
@@ -251,8 +258,37 @@ def main():
         # audio_status = "A" if connections['audio'] else "a"
         # status_text = f"{glove_status}{audio_status}"
         # cv.putText(image, status_text, (10, 30), font, font_scale, (255, 255, 0), thickness)
+        # find hands, return drawn image
+        # HAND FINDER PART
+        image = tracker.hands_finder(image, draw=False)
+        lm_list, absolute_pos = tracker.position_finder(image, hand_no = 0, draw=False)
 
-        cv.imshow("Video", image)
+        finger_keys = {}
+        for landmark in lm_list:
+            lm_id, x_px, y_px = landmark[0], landmark[1], landmark[2]
+            if lm_id in [4,8,12,16,20] and (x_px != 0 and y_px != 0):
+                midi_note = finger_aruco.find_closest_key(x_px, y_px)
+                midi_note = finger_aruco.find_closest_key_with_full_correction(x_px, y_px)
+                name, is_black_from_midi = name_from_midi(midi_note)
+                distance = finger_aruco.measure_distance_to_key(x_px, y_px, midi_note)
+                if lm_id == 4:
+                    distance_to_keys = {}
+                    
+                    for key in finger_aruco.keyboard_map:
+                        distance_to_keys[key['name']] = finger_aruco.measure_distance_to_key(x_px, y_px, key['midi_note'])
+                    print(f"Distance to keys: {distance_to_keys}")
+                    print(f"Finger {lm_id}: Regular image coords {x_px, y_px}, MIDI note {name}, Distance {distance}")
+                finger_keys[lm_id] = midi_note
+        
+        if len(lm_list) > 0:
+            # birdseye_image = finger_aruco.draw_birdseye_keys(image, lm_list, finger_keys)
+            birdseye_image = finger_aruco.transform_image_to_orthographic_plane(image, poses, plane_extent_meters=(2.0, 0.6), output_size=(1280, 720))
+            # Resize for display if image is too large
+            # display_image = resize_for_display(birdseye_image, max_width=1280, max_height=720)
+            cv.imshow("Birdseye", birdseye_image)
+            cv.imshow("Original", image)
+        else:
+            cv.imshow("Video", image)
 
         # Exit the loop if the 'q' key is pressed
         if cv.waitKey(1) & 0xFF == ord('q'):
