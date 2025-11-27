@@ -2,15 +2,22 @@
 #include <Audio.h>
 #include <Wire.h>
 #include <SPI.h>
-#include "teensyPiano.h"
 #include <vector>
+
+#include "teensyPiano.h"
+#include "voiceCommands.h"
+
+// NOTE: CURRENTLY DESIGNED FOR CHEAP AUDIO HAT (NOT OURS)
 
 TeensyPiano piano;
 std::vector<AudioConnection> pianoConnectors;
 
-AudioControlSGTL5000 audioShield;
-AudioOutputI2S i2sOutput;
-
+VoiceCommands voiceCommands;
+// AudioControlSGTL5000 audioShield;
+AudioOutputPT8211 pt8211;
+// AudioOutputI2S i2sOutput;
+AudioMixer4 sd_mixer;
+AudioConnection sd_connection;
 AudioConnection i2sCord;
 
 bool gIsNoteOn[NUM_SENSORS] = {false};
@@ -39,14 +46,21 @@ void setup() {
   Serial.begin(115200);
   Serial1.begin(9600);
 
+  // initialize SD card and related audio resources
+
   Serial.println("Receiver Ready");
 
   // setup the piano with 5 voices
   piano.setup(5);
   delay(100);
   
-  i2sCord.connect(piano.piano_mixer_out, 0, i2sOutput, 0);
-  i2sCord.connect(piano.piano_mixer_out, 0, i2sOutput, 1);
+  voiceCommands.setUpSD();
+
+  sd_connection.connect(voiceCommands.playWav1, 0, sd_mixer, 0);
+  sd_connection.connect(piano.piano_mixer_out, 0, sd_mixer, 1);
+
+  i2sCord.connect(sd_mixer, 0, pt8211, 0);
+  i2sCord.connect(sd_mixer, 0, pt8211, 1);
 
   // audioShield.enable();
   // audioShield.volume(0.4);
@@ -55,7 +69,23 @@ void setup() {
 
 
 void loop() {
+  Serial.println("Voice on");
+  piano.voiceOn(0, 60, 60);
+  piano.voiceOn(1, 67, 60);
+  piano.voiceOn(2, 72, 70);
+  piano.voiceOn(3, 60+19, 75);
+  delay(5000);
+  
+  Serial.println("Voice off");
+  piano.voiceOff(0);
+  piano.voiceOff(1);
+  delay(1000);
 
+
+  Serial.print(AudioMemoryUsage());
+  Serial.print(" (");    
+  Serial.print(AudioMemoryUsageMax());
+  Serial.println(" )");
   switch(gCurSystemState) {
     case(AUDIO_HAT_WELCOME):
       
