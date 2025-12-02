@@ -12,6 +12,7 @@
 // assigning select lines
 #define MOTOR_1 0 // setting a value of -1 or 7 causes to fail for some reason
 // Which test points correspond to which MOTOR value. Refer to schematic. Enum should be implement to make this less confusing
+//TESTPOINTNUM = SDA NET = MUX INPUT = MOTOR OUTPUT NAME
 //T1 = SDA0 = MUX0 = OUT0
 //T2 = SDA1 = MUX1 = OUT1
 //T3 = SDA2 = MUX2 = OUT2
