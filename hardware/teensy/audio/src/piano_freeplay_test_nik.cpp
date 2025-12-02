@@ -53,7 +53,11 @@ void setup() {
   piano.setup();
   delay(100);
   
-  voiceCommands.setUpSD();
+  int result = voiceCommands.setUpSD();
+  while (result == -1)
+  {
+    result = voiceCommands.setUpSD();
+  }
 
   sd_connection.connect(voiceCommands.playWav1, 0, sd_mixer, 0);
   sd_connection.connect(piano.piano_mixer_out, 0, sd_mixer, 1);

@@ -30,7 +30,7 @@ class VoiceCommands {
     }
     
     //setup function
-    void setUpSD();
+    int setUpSD();
 
     // play an instruction from the SD card
     void playInstruction(const char *filename);
