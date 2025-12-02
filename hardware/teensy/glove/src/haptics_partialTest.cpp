@@ -10,14 +10,15 @@
 #define TCAADDR 0x77 //ALL HIGH ON OUR PCB! 0x70 for the breakout module -Rahul
 
 // assigning select lines
-#define MOTOR_1 3 // setting a value of -1 or 7 causes to fail for some reason
+#define MOTOR_1 0 // setting a value of -1 or 7 causes to fail for some reason
 // Which test points correspond to which MOTOR value. Refer to schematic. Enum should be implement to make this less confusing
-//T7 = 3
-//T5 = 5
-//T6 = 6
-//T1 = 0
-//T2 = 1
-//T3 = 2
+//T1 = SDA0 = MUX0 = OUT0
+//T2 = SDA1 = MUX1 = OUT1
+//T3 = SDA2 = MUX2 = OUT2
+//T4 = SDA3 = MUX4 = OUT3
+//T5 = SDA4 = MUX5 = OUT4
+//T6 = SDA5 = MUX6 = OUT5
+//T7 = SDA6 = MUX3 = OUT6
 #define RESET 12
 
 Adafruit_DRV2605 drv;
@@ -32,25 +33,25 @@ void tcaSelect(uint8_t i) {
   Serial.printf("TCA Channel %d selected\n", i);
 }
 
-// void readControlRegister() {
-//   Wire1.beginTransmission(TCAADDR);
-//   unsigned int result = Wire1.read();
-//   Serial.printf("Control Register ", result);
-//   Wire1.endTransmission();
-// }
-
 void readControlRegister() {
   Wire1.beginTransmission(TCAADDR);
-  Wire1.write(0x00);          // control register address (example)
-  Wire1.endTransmission(false);
-  Wire1.requestFrom(TCAADDR, 1);
-  if (Wire1.available()) {
-    uint8_t result = Wire1.read();
-    Serial.printf("Control Register: %u\n", result);
-  }
+  unsigned int result = Wire1.read();
+  Serial.printf("Control Register ", result);
+  Wire1.endTransmission();
 }
 
-void setup() {
+// void readControlRegister() {
+//   Wire1.beginTransmission(TCAADDR);
+//   Wire1.write(0x00);          // control register address (example)
+//   Wire1.endTransmission(false);
+//   Wire1.requestFrom(TCAADDR, 1);
+//   if (Wire1.available()) {
+//     uint8_t result = Wire1.read();
+//     Serial.printf("Control Register: %u\n", result);
+//   }
+// }
+
+void setup() { 
   Serial.begin(9600);
   Serial.println("Starting...");
   Serial.println("MUX RESET");
@@ -86,13 +87,13 @@ void loop() {
     Serial.print("testing channel ");
     Serial.println(j);
     for (uint8_t i = 1; i <= 5; i++) {
-      tcaSelect(3);
+      tcaSelect(0);
       Serial.print("Playing Effect");
       Serial.println(i);
       drv.setWaveform(0, i);
       drv.setWaveform(1, 0);
       drv.go();
-      delay(600);
+      delay(2000);
     }
   }
   
