@@ -33,7 +33,7 @@ class VoiceCommands {
     void setUpSD();
 
     // play an instruction from the SD card
-    void playInstr(const char *filename);
+    void playInstruction(const char *filename);
 
     // SDCard playwav object
     AudioPlaySdWav playWav1;

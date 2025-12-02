@@ -13,7 +13,7 @@ void VoiceCommands::setUpSD(){
   isSetup_ = true;
 }
 
-void VoiceCommands::playInstr(const char *filename)
+void VoiceCommands::playInstruction(const char *filename)
 {
   Serial.print("Playing file: ");
   Serial.println(filename);
