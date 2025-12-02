@@ -93,7 +93,7 @@ void setup {
             gFreeplayMode = false; 
         }
         // write the mode selected back to python for confirmation
-        Serial.write(gFreeplayMode);
+        Serial.print(gFreeplayMode);
     }
 
     // Step 4: Call song selection calibration function to calibrate all sensors BASED ON MODE
@@ -117,7 +117,7 @@ void setup {
             // number back to the python unit - only for left hand
             if(TEENSY_HAND == Hand::Left) {
                 int songPressCount = buttonPressCount(5000, BUTTON_SONG); // 5 second window to press button
-                Serial.write(songPressCount); // send selected song number back to python
+                Serial.print(songPressCount); // send selected song number back to python
             }
             break;
     }
@@ -128,7 +128,7 @@ void setup {
 
     // final confirmation message to python - this cues it to play out 
     // final message on audio hat and then clear its input buffer or whatever needs to be done
-    Serial.write("COMPLETE");
+    Serial.print("COMPLETE");
 
 }
 
