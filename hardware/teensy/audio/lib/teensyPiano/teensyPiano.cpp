@@ -1,21 +1,25 @@
 #include "teensyPiano.h"
 
-int TeensyPiano::setup(unsigned int n_voices) {
-  if (n_voices > 16)
+int TeensyPiano::setup() {
+  // NO MORE THAN 16 VOICES
+  if (NUM_VOICES > 16)
     { return -1; }
+  
+  
   
   // we just resize the voices_ and voice_connections_
   // vectors to the number of voices
-  voices_.resize(n_voices);
-  voice_connections_.resize(n_voices);
+  
+  // TODO: change to static array
+  voice_connections_.resize(NUM_VOICES);
 
   // this the number of mixers/connections we will need to connect the voices
-  unsigned int n_mixers = ceilf((float)n_voices / 4.0f);
+  unsigned int n_mixers = ceilf((float)NUM_VOICES / 4.0f);
   
   mixers_.resize(n_mixers);
   mixer_connections_.resize(n_mixers);
 
-  for (unsigned int i = 0; i < n_voices; i++) {
+  for (unsigned int i = 0; i < NUM_VOICES; i++) {
     unsigned int mixer_idx = floorf(i/4.0f); 
     unsigned int mixer_channel = i % 4;
     
@@ -40,6 +44,11 @@ void TeensyPiano::voiceOn(unsigned int idx, u_int8_t midiNote, u_int8_t vel) {
 
 void TeensyPiano::voiceOff(unsigned int idx) {
   voices_[idx].noteOff();
+}
+
+std::array<bool, NUM_VOICES> TeensyPiano::areVoicesOn() {
+  
+  return areVoicesOn_;
 }
 
 TeensyPiano::~TeensyPiano() {

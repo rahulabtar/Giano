@@ -3,11 +3,14 @@
 #include "teensyPianoVoice.h"
 #include <vector>
 #include <math.h>
+#include <array>
+#include "consts.h"
 
 class TeensyPiano{
   public:
     TeensyPiano() {}
-    int setup(unsigned int n_voices);
+    // number of voices is fixed at compile time as NUM_VOICES
+    int setup();
 
     //this method will turn on voice {idx}
     void voiceOn(unsigned int idx, u_int8_t midiNote, u_int8_t vel);
@@ -15,14 +18,18 @@ class TeensyPiano{
     // this method will turn off voice {idx}
     void voiceOff(unsigned int idx);
 
-    bool areVoicesOn();
+    //
+    std::array<bool, NUM_VOICES> areVoicesOn();
     AudioMixer4 piano_mixer_out;
     ~TeensyPiano();
   
   private:
-    std::vector<TeensyPianoVoice> voices_;
+    std::array<TeensyPianoVoice, NUM_VOICES> voices_;
     std::vector<AudioConnection> voice_connections_;
 
     std::vector<AudioMixer4> mixers_;
     std::vector<AudioConnection> mixer_connections_;
+
+    // array with the status of voices
+    std::array<bool, NUM_VOICES> areVoicesOn_;
 };

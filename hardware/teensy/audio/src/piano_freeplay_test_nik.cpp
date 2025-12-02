@@ -13,9 +13,8 @@ TeensyPiano piano;
 std::vector<AudioConnection> pianoConnectors;
 
 VoiceCommands voiceCommands;
-// AudioControlSGTL5000 audioShield;
-AudioOutputPT8211 pt8211;
-// AudioOutputI2S i2sOutput;
+AudioControlSGTL5000 audioShield;
+AudioOutputI2S i2sOutput;
 AudioMixer4 sd_mixer;
 AudioConnection sd_connection;
 AudioConnection i2sCord;
@@ -48,10 +47,10 @@ void setup() {
 
   // initialize SD card and related audio resources
 
-  Serial.println("Receiver Ready");
+  Serial1.println("Receiver Ready");
 
   // setup the piano with 5 voices
-  piano.setup(5);
+  piano.setup();
   delay(100);
   
   voiceCommands.setUpSD();
@@ -59,11 +58,11 @@ void setup() {
   sd_connection.connect(voiceCommands.playWav1, 0, sd_mixer, 0);
   sd_connection.connect(piano.piano_mixer_out, 0, sd_mixer, 1);
 
-  i2sCord.connect(sd_mixer, 0, pt8211, 0);
-  i2sCord.connect(sd_mixer, 0, pt8211, 1);
+  i2sCord.connect(sd_mixer, 0, i2sOutput, 0);
+  i2sCord.connect(sd_mixer, 0, i2sOutput, 1);
 
-  // audioShield.enable();
-  // audioShield.volume(0.4);
+  audioShield.enable();
+  audioShield.volume(0.4);
 
 }
 
@@ -82,13 +81,13 @@ void loop() {
   delay(1000);
 
 
-  Serial.print(AudioMemoryUsage());
-  Serial.print(" (");    
-  Serial.print(AudioMemoryUsageMax());
-  Serial.println(" )");
+  Serial1.print(AudioMemoryUsage());
+  Serial1.print(" (");    
+  Serial1.print(AudioMemoryUsageMax());
+  Serial1.println(" )");
   switch(gCurSystemState) {
     case(AUDIO_HAT_WELCOME):
-      
+      voiceCommands.playInstruction(WELCOME_SD);
       break;
 
     case(MODE_SELECT):

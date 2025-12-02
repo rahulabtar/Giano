@@ -5,6 +5,11 @@
 #include <SPI.h>
 #include "consts.h"
 
+// base FM depth; adjust to taste
+const float kModDepth = 3.0f; 
+
+// base ratio of modulator to fundamental
+const float kModRatio = 14.0f;
 
 class TeensyPianoVoice
 {
@@ -38,16 +43,18 @@ class TeensyPianoVoice
 
     // voiceOn property
     bool voiceOn_;
-
+    float modulatorRatio_;
+    AudioSynthWaveformSineModulated fmCarrier;
     // Waveform objects
-    AudioSynthWaveformSine   fmCarrier;
     AudioSynthWaveformSine   fmModulator;
     AudioSynthWaveformSine   fmHarmonic1;
     AudioSynthWaveformSine   fmHarmonic2; 
     AudioSynthWaveformSine   fmHarmonic3;
-
+    
     //ADSR envelopes
-    AudioEffectEnvelope      env_;      
+    AudioEffectEnvelope      carrierEnv_; 
+    AudioEffectEnvelope      modulatorEnv_;
+
     AudioEffectEnvelope      env1_;
     AudioEffectEnvelope      env2_;
     AudioEffectEnvelope      env3_;
@@ -60,14 +67,18 @@ class TeensyPianoVoice
     AudioConnection patch7_;
     AudioConnection patch8_;
 
+    // amplifier to control modulation depth and its connections
+    AudioAmplifier           modAmp;
+    AudioConnection         patchModToAmp_;
+    AudioConnection         patchAmpToEnv_;
+    AudioConnection         patchAmpEnvToCarrier_;
+
     AudioConnection patch9_;
     AudioConnection patch10_;
     AudioConnection patch11_;
     AudioConnection patch12_;
     AudioConnection patch13_;
     AudioConnection patch14_;
-
-  
 
 
     // Auto note-off timing
