@@ -40,17 +40,6 @@ void readControlRegister() {
   Wire1.endTransmission();
 }
 
-// void readControlRegister() {
-//   Wire1.beginTransmission(TCAADDR);
-//   Wire1.write(0x00);          // control register address (example)
-//   Wire1.endTransmission(false);
-//   Wire1.requestFrom(TCAADDR, 1);
-//   if (Wire1.available()) {
-//     uint8_t result = Wire1.read();
-//     Serial.printf("Control Register: %u\n", result);
-//   }
-// }
-
 void setup() { 
   Serial.begin(9600);
   Serial.println("Starting...");
@@ -72,7 +61,7 @@ void setup() {
     while (1) { delay(100); }
   }
   delay(10);
-
+  
   readControlRegister();
   delay(1000);
 
@@ -83,22 +72,24 @@ void setup() {
 
 void loop() {
 
-  for (uint8_t j = 0; j <= 7; j++){
+  for (uint8_t j = 0; j < 8; j++) {
     Serial.print("testing channel ");
     Serial.println(j);
-    for (uint8_t i = 1; i <= 5; i++) {
-      tcaSelect(0);
-      Serial.print("Playing Effect");
-      Serial.println(i);
-      drv.setWaveform(0, i);
-      drv.setWaveform(1, 0);
-      drv.go();
-      delay(2000);
-    }
-  }
-  
 
-  Serial.println("successful!");
-  delay(5000);
+    tcaSelect(j);
+
+    if (!drv.begin(&Wire1)) {
+        Serial.print("DRV2605 failed on channel ");
+        Serial.println(j);
+        continue;
+    }
+
+    drv.setMode(DRV2605_MODE_INTTRIG);
+    drv.setWaveform(0, 47);
+    drv.setWaveform(1, 0);   // end of waveform
+    drv.go();
+
+    delay(2000);
 }
 
+}
