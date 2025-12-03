@@ -12,12 +12,13 @@ import threading
 import queue
 import time
 import logging
+import mido
 from typing import Optional, List, Dict, Callable, Literal, Union
 from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
 
-from .protocols import GloveProtocolFreeplayMode, GloveProtocolLearningMode, AudioProtocol, PlayingMode, Hand, SensorValue, SensorNumberLeft
+from protocols import GloveProtocolFreeplayMode, GloveProtocolLearningMode, PlayingMode, Hand, SensorValue, VoiceCommand
 
 from src.core.constants import SERIAL_BAUD_RATE, LEFT_PORT, RIGHT_PORT
 
@@ -84,7 +85,12 @@ class BaseSerialManager:
         try:
             self.conn = serial.Serial(port, self.baud_rate, timeout=0.1)
             self.port = port
+
             hand_bytes = self.conn.read(1)
+            while not hand_bytes:
+                hand_bytes = self.conn.read(1)
+                time.sleep(0.1)
+            print(f"Hand bytes: {hand_bytes}")
             if not hand_bytes:
                 logger.warning("No hand bytes received from device")
                 return False, None
@@ -151,9 +157,12 @@ class BaseSerialManager:
                 success, detected_hand = self._connect(port)
                 if success:
                     return success, detected_hand
+            else:
+                logger.warning(f"Could not test port {port}")
+                continue
         
         logger.warning("Could not auto-detect device")
-        return False, None
+        return False, None, None
     
     def stop(self):
         """Stop all communication threads."""
@@ -276,45 +285,6 @@ class LeftGloveSerialManager(BaseSerialManager):
         self.start()
         return True, detected_hand, None
     
-    def _test_port(self, port: str) -> bool:
-        """
-        Test if port is glove controller.
-        
-        Note: This consumes the hand identifier byte from the serial stream.
-        If the glove only sends this byte once on startup, repeated calls to
-        _auto_connect() may fail to detect the correct port.
-        """
-        try:
-            s = serial.Serial(port, self.baud_rate, timeout=0.1)
-            # Read hand identifier byte (consumes it from the stream)
-            glove_hand_bytes = s.read(1)
-            s.close()
-            
-            if not glove_hand_bytes:
-                return False
-            
-            # Convert bytes to int for comparison with IntEnum
-            glove_hand_value = glove_hand_bytes[0]
-            
-            print(f"Glove hand value: {glove_hand_value}")
-            print(f"Expected hand: {self.hand}")
-
-            # Check if this port matches the expected hand
-            if glove_hand_value == Hand.LEFT.value and self.hand == Hand.LEFT:
-                logger.info(f"Found {self.hand}-hand glove controller on {port}")
-                return True
-            elif glove_hand_value == Hand.RIGHT.value and self.hand == Hand.RIGHT:
-                logger.info(f"Found correct {self.hand}-hand glove controller on {port}")
-                return True
-            else:
-                # Update hand if we found a different one
-                detected_hand = Hand(glove_hand_value)
-                logger.warning(f"Found {detected_hand}-hand glove controller on {port}, expected {self.hand}")
-                self.hand = detected_hand
-                return False
-        except Exception as e:
-            logger.debug(f"Error testing port {port}: {e}")
-            return False
     
     def start(self):
         """
@@ -527,8 +497,8 @@ def read_from_teensy(port, source_hand):
 
 class AudioProtocol:
     
-    def __init__(self, output = 'Teensy MIDI/Audio'):
-        self.out = mido.open_output(output)
+    def __init__(self, port: str = 'Teensy MIDI/Audio'):
+        self.out = mido.open_output(port)
 
     def note_on(self, note: int, velocity: int = 100):
         #if (note < 60): return #values less than 60 are reserved for voice commands
@@ -578,9 +548,9 @@ class AudioProtocol:
 
 def main():
     # example usage
-    left_glove = GloveSerialManager(source_hand='L', port=LEFT_PORT, play_mode=PlayMode.FREEPLAY_MODE)
-    right_glove = GloveSerialManager(source_hand='R', port=RIGHT_PORT, play_mode=PlayMode.FREEPLAY_MODE)
-    audio_board = AudioSerialManager(port=AUDIO_PORT)
+    left_glove = LeftGloveSerialManager(port=LEFT_PORT, play_mode=PlayingMode.FREEPLAY_MODE)
+    right_glove = RightGloveSerialManager(port=RIGHT_PORT, play_mode=PlayingMode.FREEPLAY_MODE)
+    audio_board = AudioProtocol()
 
     result = left_glove.connect()
     while not result:

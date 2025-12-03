@@ -12,6 +12,10 @@ from typing import Optional, Tuple, Dict, Any
 import numpy as np
 import mido
 
+#-------------------------------- COMMON SHARED --------------------------------
+
+
+# Defines the "hand byte" during connection
 class Hand(IntEnum):
     AUDIO = 253
     LEFT = 254
@@ -174,6 +178,9 @@ class GloveProtocolLearningMode:
         # Add validation logic for responses (e.g., ACK, error codes)
         return 0 <= motor_id <= 4 and 0 <= midi_note <= 127 and 0 <= action <= 5
 
+
+
+#-------------------------------- AUDIO --------------------------------
 
 # ENUM FOR VOICE COMMANDS COMING FROM THE GLOVE CONTROLLER AND GOING TO THE AUDIO TEENSY
 class VoiceCommand(IntEnum):
