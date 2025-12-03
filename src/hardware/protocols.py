@@ -29,7 +29,8 @@ class SensorNumberLeft(IntEnum):
     Ring=3
     Pinky=4
 
-class PlayMode(Enum):
+
+class PlayingMode(Enum):
     LEARNING_MODE = 0
     FREEPLAY_MODE = 1
 
@@ -175,19 +176,26 @@ class GloveProtocolLearningMode:
 
 # ENUM FOR VOICE COMMANDS COMING FROM THE GLOVE CONTROLLER AND GOING TO THE AUDIO TEENSY
 class VoiceCommand(IntEnum):
+    #music played on boot
     WELCOME_MUSIC = 16
+
+    #text played on boot
     WELCOME_TEXT = 17
+
+    # missing
     MODE_SELECT_BUTTONS = 18
-    FREEPLAY_MODE_CONFIRM = 19
-    LEARNING_MODE_SELECTED = 20
-    CALIB_VELO_NO_PRESS = 21
-    CALIB_SOFT_PRESS = 22
-    CALIB_HARD_PRESS = 23
-    HOW_TO_CHANGE_MODE = 24
-    CONFIRM_SONG = 25
-    CONFIRM_SELECTION = 26
-    DEBUG = 254
-    INVALID = 255
+    SELECT_SONG = 19
+    # confirmation of freeplay mode selection
+    FREEPLAY_MODE_CONFIRM = 20
+    LEARNING_MODE_CONFIRM = 21
+    CALIB_VELO_NO_PRESS = 22
+    CALIB_SOFT_PRESS = 23
+    CALIB_HARD_PRESS = 24
+    HOW_TO_CHANGE_MODE = 25
+    HOW_TO_RESET_SONG = 26
+    FLUSH = 27
+    DEBUG = 28
+    INVALID = 29
 
 class AudioProtocol:
     
@@ -212,15 +220,9 @@ class AudioProtocol:
         """
         Play a voice command by sending it as a MIDI note.
         
-        WARNING: Values 254 (DEBUG) and 255 (INVALID) are outside the standard
-        MIDI note range (0-127). These values will NOT work correctly with
-        standard MIDI protocol. If your Teensy firmware requires these exact
-        values, you may need to:
-        1. Use raw serial communication instead of MIDI
-        2. Map these to valid MIDI values (e.g., use Control Change messages)
-        3. Use a different MIDI message type that supports these values
-        
-        For now, values > 127 will raise a ValueError.
+        Voice commands use MIDI note values 0-59 (values 60+ are reserved
+        for regular piano notes). The command is sent as a note_on followed
+        immediately by note_off to trigger the voice playback on the Teensy.
         """
         note_value = command.value
         
@@ -228,8 +230,15 @@ class AudioProtocol:
         if note_value > 127:
             raise ValueError(
                 f"VoiceCommand {command.name} has value {note_value} which exceeds "
-                f"MIDI note range (0-127). Cannot send via standard MIDI protocol. "
-                f"Consider using raw serial or a different communication method."
+                f"MIDI note range (0-127). Cannot send via standard MIDI protocol."
+            )
+        
+        # Voice commands should be in range 0-59 (values 60+ are for regular notes)
+        if note_value >= 60:
+            import logging
+            logging.warning(
+                f"VoiceCommand {command.name} has value {note_value} which is in "
+                f"the regular MIDI note range (60+). Voice commands should be 0-59."
             )
         
         self.out.send(mido.Message('note_on', note=note_value, velocity=127, channel=0))
