@@ -11,7 +11,11 @@
  */
 
 // Setting Type for the hand: *must manually changed before uploading to each hand*
+// IF LEFT HAND:
 #define TEENSY_HAND Hand::Left
+
+// IF RIGHT HAND
+//#define TEENSY_HAND Hand::Right
 
 // Set button pins for left glove - CHECK THESE PLEASEEEE!!!!
 // LEFTMOST BUTTON CONTROLS SONG, RIGHT CONTROLS MODE
@@ -28,7 +32,13 @@ const int NUM_VELOSTAT = 5;
 // thumb index 0, pinky at 4. ON LEFT GLOVE: PINKY IS LEFTMOST CONNECTOR
 // ON RIGHT GLOVE: THUMB IS LEFTMOST CONNECTOR.
 // these numbers swap order for right glove.
+
+//LEFT PINS:
 const int VELOSTAT_PINS[NUM_VELOSTAT] = {14, 18, 19, 21, 20}; 
+
+// RIGHT PINS:
+//const int VELOSTAT_PINS[NUM_VELOSTAT] = {20, 21, 19, 18, 14}; 
+
 // set default state of pressed vs unpressed to be unpressed
 bool gPressed = false; 
 // array to hold state of each sensor (pressed or unpressed)
@@ -48,7 +58,13 @@ const int NUM_HAPTICS = 7;
 // SET THUMB at index 0, Pinky at 4, left wrist 5, right wrist 6
 // ie for right hand indexes 0-4 are reverse, 5 and 6 stay the same
 // THIS IS ACTUALLY SETUP FOR SELECT LINES
+
+// LEFT PINS:
 const int HAPTIC_PINS[NUM_HAPTICS] = {2, 1, 0, 6, 5, 4, 3};
+
+// RIGHT PINS:
+//const int HAPTIC_PINS[NUM_HAPTICS] = {5, 6, 0, 1, 2,4, 3};
+
 // TCA MUX ADDRESS
 #define TCAADDR 0x77
 // INSTANTIATE HAPTIC DRIVER OBJECT
