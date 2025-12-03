@@ -1,0 +1,9 @@
+
+import time
+from protocols import voice_command, AudioProtocol
+
+audio = AudioProtocol()
+for i in range (9):
+    print("SEND INSTR COMPLETE " + str(i))
+    audio.play_voice_command(voice_command(i))
+    time.sleep(2)
