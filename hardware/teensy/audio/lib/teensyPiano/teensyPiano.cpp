@@ -40,15 +40,22 @@ int TeensyPiano::setup() {
 
 void TeensyPiano::voiceOn(unsigned int idx, u_int8_t midiNote, u_int8_t vel) {
   voices_[idx].noteOn(midiNote, vel);
+  areVoicesOn_[idx] = true;
+  voicePitches_[idx] = midiNote;
 }
 
 void TeensyPiano::voiceOff(unsigned int idx) {
   voices_[idx].noteOff();
+  areVoicesOn_[idx] = false;
+  voicePitches_[idx] = -1;
 }
 
 std::array<bool, NUM_VOICES> TeensyPiano::areVoicesOn() {
-  
   return areVoicesOn_;
+}
+
+std::array<int, NUM_VOICES> TeensyPiano::getVoicePitches() {
+  return voicePitches_;
 }
 
 TeensyPiano::~TeensyPiano() {

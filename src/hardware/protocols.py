@@ -203,15 +203,16 @@ class AudioProtocol:
         self.out = mido.open_output(output)
 
     def note_on(self, note: int, velocity: int = 100):
-        if (note < 60): return #values less than 60 are reserved for voice commands
+        #if (note < 60): return #values less than 60 are reserved for voice commands
         if note > 127:
             raise ValueError(f"Invalid MIDI note value: {note}. MIDI notes must be 0-127.")
         velocity = 127 if velocity > 127 else velocity
         velocity = 0 if velocity < 0 else velocity
         self.out.send(mido.Message('note_on', note=note, velocity=velocity, channel=0))
+        #print("I turned on note " + str(note) + " with velocity " +  str(velocity))
     
     def note_off(self, note: int, velocity: int = 0):
-        if (note < 60): return #values less than 60 are reserved for voice commands
+        #if (note < 60): return #values less than 60 are reserved for voice commands
         if note > 127:
             raise ValueError(f"Invalid MIDI note value: {note}. MIDI notes must be 0-127.")
         self.out.send(mido.Message('note_off', note=note, velocity=velocity, channel=0))

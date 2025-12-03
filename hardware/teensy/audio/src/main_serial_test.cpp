@@ -1,11 +1,14 @@
 #include "midi_process.h"
 #include <Arduino.h>
 #include "teensyPiano.h"
+#include "voiceCommands.h"
 
 TeensyPiano piano; 
+VoiceCommands voiceCmds;
 AudioControlSGTL5000 sgtl5000_1;
 AudioOutputI2S audioOutput;
 AudioConnection patchOut;
+AudioConnection instrOut; 
 
 // TODO: remember you have stashed changes
 void setup() {
@@ -15,10 +18,15 @@ void setup() {
 
     Serial.begin(115200);
     delay(100);
+    Serial.println("Setting up SD Card...");
+    int sdSuccess = voiceCmds.setUpSD();
+    Serial.print("SD setup returned: ");
+    Serial.println(sdSuccess);
     int success = piano.setup(); 
     Serial.print("Piano setup returned: ");
     Serial.println(success);
     patchOut.connect(piano.piano_mixer_out, 0, audioOutput, 0);
+    instrOut.connect(voiceCmds.playWav1, 0, audioOutput, 1);
 }
 
 void loop() {
@@ -26,11 +34,5 @@ void loop() {
     Serial.print("NOTE RECEIVED: PROCESSING NOW");
     processMIDIData();
     }
-    // piano.voiceOn(0, 60, 100);
-    // Serial.println("piano ON");
-    // delay(1000);
-    // piano.voiceOff(0);
-    // Serial.println("piano OFF");
-
-    delay(1000);
+    //delay(1000);
 }

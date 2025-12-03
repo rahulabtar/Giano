@@ -20,6 +20,7 @@ class TeensyPiano{
 
     //
     std::array<bool, NUM_VOICES> areVoicesOn();
+    std::array<int, NUM_VOICES> getVoicePitches();
     AudioMixer4 piano_mixer_out;
     ~TeensyPiano();
   
@@ -32,4 +33,5 @@ class TeensyPiano{
 
     // array with the status of voices
     std::array<bool, NUM_VOICES> areVoicesOn_;
+    std::array<int, NUM_VOICES> voicePitches_;
 };

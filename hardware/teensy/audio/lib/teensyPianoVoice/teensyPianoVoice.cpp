@@ -147,6 +147,7 @@ void TeensyPianoVoice::noteOn(u_int8_t note, u_int8_t velocity) {
 
   AudioInterrupts();
   voiceOn_ = true;
+  pitch_ = note;
 
 }
 
@@ -164,10 +165,15 @@ void TeensyPianoVoice::noteOff() {
   AudioInterrupts();
 
   voiceOn_ = false;
+  pitch_ = -1; 
 }
 
 bool TeensyPianoVoice::isVoiceOn() {
   return voiceOn_;
+}
+
+int TeensyPianoVoice::getPitch() {
+  return pitch_;
 }
 
 TeensyPianoVoice::~TeensyPianoVoice() {}

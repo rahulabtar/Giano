@@ -24,6 +24,7 @@ class TeensyPianoVoice
 
     // Returns true if noteOn was called without accompanying noteOff
     bool isVoiceOn();
+    int getPitch(); 
 
     // mapping functions
     float midiNoteToFreq(uint8_t note);
@@ -43,6 +44,7 @@ class TeensyPianoVoice
 
     // voiceOn property
     bool voiceOn_;
+    int pitch_; 
     float modulatorRatio_;
     AudioSynthWaveformSineModulated fmCarrier;
     // Waveform objects

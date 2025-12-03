@@ -2,21 +2,36 @@
 #include <usb_midi.h>
 #include "midi_process.h"
 #include "piano_globals.h"
+#include "serial_commands.h"
+
 /**
   Function to pass off audio processing/handling for ON
 */
 void playAudioHat(uint8_t pitch, uint8_t velocity) {
   // FILLER STUB FOR NOW, just to check if it reaches here
   Serial.println(" Congrats! You played a note!");
-  piano.voiceOn(0, pitch, velocity);
+  std::array<bool, NUM_VOICES> voices = piano.areVoicesOn();
+  for (int i = 0; i < NUM_VOICES; i++) {
+    if (!voices[i]) {
+      piano.voiceOn(i, pitch, velocity); // always getting assigned to zero for some reason
+      return;
+    }
+  }
+  //piano.voiceOn(0, pitch, velocity);
 }
 /**
   Function to pass off audio processing/handling for OFF
 */
-void terminateAudioHat() {
+void terminateAudioHat(int pitch) {
   // FILLER STUB FOR NOW, just to check if it reaches here
   Serial.println(" Note stopped! Play the next!");
-  piano.voiceOff(0); 
+  for (int i = 0; i < NUM_VOICES; i++) {
+    std::array<int, NUM_VOICES> voicePitches = piano.getVoicePitches();
+    if (voicePitches[i] == pitch) {
+      piano.voiceOff(i);
+      return;
+    }
+  }
 }
 
 /**
@@ -41,23 +56,32 @@ void processMIDIData(){
   // NOTE: there are other cases we can play around with if needed!
   switch(onStatus) {
     case usbMIDI.NoteOn:
-      playAudioHat(pitch, velocity);
-      Serial.print("Note ON, ch=");
-      Serial.print(channel, DEC);
-      Serial.print(", note=");
-      Serial.print(pitch, DEC);
-      Serial.print(", velocity=");
-      Serial.println(velocity, DEC);
+    Serial.println(pitch);
+      if (pitch >= 60){
+        playAudioHat(pitch, velocity); //only plays for notes in the octaves supported 
+      } 
+      else{
+        Serial.println(" Playing voice command...");
+        VocalCommandCodes command = static_cast<VocalCommandCodes>(pitch);
+        const char* filename = voiceCmds.getFileName(command);
+        voiceCmds.playInstruction(filename);
+      }
+      // Serial.print("Note ON, ch=");
+      // Serial.print(channel, DEC);
+      // Serial.print(", note=");
+      // Serial.print(pitch, DEC);
+      // Serial.print(", velocity=");
+      // Serial.println(velocity, DEC);
       break;
 
     case usbMIDI.NoteOff:
-      terminateAudioHat();
-      Serial.print("Note OFF, ch=");
-      Serial.print(channel, DEC);
-      Serial.print(", note=");
-      Serial.print(pitch, DEC);
-      Serial.print(", velocity=");
-      Serial.println(velocity, DEC);
+      terminateAudioHat(pitch);
+      // Serial.print("Note OFF, ch=");
+      // Serial.print(channel, DEC);
+      // Serial.print(", note=");
+      // Serial.print(pitch, DEC);
+      // Serial.print(", velocity=");
+      // Serial.println(velocity, DEC);
       break;
   }
 }

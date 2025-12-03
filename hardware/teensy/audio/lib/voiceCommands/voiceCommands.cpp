@@ -2,7 +2,6 @@
 #include "voiceCommands.h"
 
 
-
 int VoiceCommands::setUpSD(){
   // Assume this is done elsewhere
   // AudioMemory(12);
@@ -14,7 +13,8 @@ int VoiceCommands::setUpSD(){
     return -1;
   }
   isSetup_ = true;
-  return 1;
+  AudioPlaySdWav playWav1;
+  return 0;
 }
 
 void VoiceCommands::playInstruction(const char *filename)
@@ -30,3 +30,31 @@ void VoiceCommands::playInstruction(const char *filename)
   //   // optional volume pot code here
   // }
 }
+
+const char* VoiceCommands::getFileName(VocalCommandCodes command) {
+    Serial.print("Getting filename for command: ");
+    switch(command) {
+        case VocalCommandCodes::WELCOME_MUSIC:          return WELCOME_SD;
+        case VocalCommandCodes::WELCOME_TEXT:           return SELSONG_SD;
+        case VocalCommandCodes::MODE_SELECT_BUTTONS:    return MODE_SELECT_BUTTONS_SD;
+        case VocalCommandCodes::SELECT_SONG:            return SELECT_SONG_SD;
+        case VocalCommandCodes::FREEPLAY_MODE_CONFIRM:  return FREEPLAY_MODE_CONFIRM_SD;
+        case VocalCommandCodes::LEARNING_MODE_CONFIRM:  return LEARNING_MODE_CONFIRM_SD;
+        case VocalCommandCodes::CALIB_VELO_NO_PRESS:    return CALIB_VELO_NO_PRESS_SD;
+        case VocalCommandCodes::CALIB_SOFT_PRESS:       return CALIB_SOFT_PRESS_SD;
+        case VocalCommandCodes::CALIB_HARD_PRESS:       return CALIB_HARD_PRESS_SD;
+        case VocalCommandCodes::HOW_TO_CHANGE_MODE:     return HOW_TO_CHANGE_MODE_SD;
+        case VocalCommandCodes::HOW_TO_RESET_SONG:      return HOW_TO_RESET_SONG_SD;
+        case VocalCommandCodes::DEBUG:                  return DEBUG_SD;
+        case VocalCommandCodes::INVALID:                return INVALID_SD;
+        case VocalCommandCodes::FLUSH:                  return FLUSH_SD;
+        case VocalCommandCodes::CALIBRATING:            return CALIBRATING_SD;
+        case VocalCommandCodes::CALIBRATING_SINE_WAVE:  return CALIBRATING_SINE_WAVE_SD;
+        case VocalCommandCodes::CALIBRATION_FAILED:     return CALIBRATION_FAILED_SD;
+        case VocalCommandCodes::CALIBRATION_SUCCESS:    return CALIBRATION_SUCCESS_SD;
+        case VocalCommandCodes::FIX_POSTURE:            return FIX_POSTURE_SD;
+        default:                                        return BOOTED_SD;
+    }
+}
+
+
