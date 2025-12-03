@@ -1,5 +1,5 @@
 #include <Arduino.h>
-#include <types.h>
+#include <serial_commands.h>
 #include <Wire.h>
 #include "Adafruit_DRV2605.h"
 
@@ -40,7 +40,6 @@ const int ADC_BITS = 12;
 // FLEX SETUP VARIABLES
 #define FLEX_WRIST 22
 
-
 // HAPTIC SETUP VARIABLES
 const int NUM_HAPTICS = 7; 
 // SET THUMB at index 0, Pinky at 4, left wrist 5, right wrist 6
@@ -63,11 +62,12 @@ void setup {
     Wire.begin();
     delay(1000); // just a buffer delay
 
-    // Step 1.5: Send confirmation byte to RasPi of which hand this is
+    // Step 1.5: Send confirmation byte to RasPi of which hand this is -
+    // Python will use this to dynamically assign the ports and retain for rest of time
     Serial.write(TEENSY_HAND, sizeof(TEENSY_HAND));
 
-    // BOOTUP MESSAGE
-    Serial.write(VoiceCommands::BOOTED, sizeof(VoiceCommands::BOOTED));
+    // BOOTUP SOUND
+    Serial.write(VoiceCommands::WELCOME_MUSIC, sizeof(VoiceCommands::WELCOME_MUSIC));
 
     // Step 2: Initialize all necessary sensors/button components for setup logic
     // we only want buttons to work if on left hand
@@ -87,18 +87,21 @@ void setup {
         // "welcome to GIANO, please select the mode by pressing the leftmost button. once 
         // for freeplay, twice for learning mode."
 
-        Serial.print("PLAY WELCOME TO GIANO + MODE SELECTION GUIDANCE")
+        Serial.write(VoiceCommands::WELCOME_TEXT, sizeof(VoiceCommands::WELCOME_TEXT));
+        Serial.write(VoiceCommands::MODE_SELECT_BUTTONS, sizeof(VoiceCommands::MODE_SELECT_BUTTONS));
 
         // wait adequate time for user to press button, detect how many times it was pressed 
         // in that window of time, and set mode accordingly
 
-        delay(200);
+        delay(200); // not needed???
 
         int modePressCount = buttonPressCount(5000, BUTTON_MODE); // 5 second window to press button
         if(modePressCount == 1) {
             gFreeplayMode = true; 
+            Serial.write(VoiceCommands::FREEPLAY_MODE_CONFIRM, sizeof(VoiceCommands::FREEPLAY_MODE_CONFIRM));
         } else if (modePressCount >= 2) {
             gFreeplayMode = false; 
+            Serial.write(VoiceCommands::LEARNING_MODE_SELECTED, sizeof(VoiceCommands::LEARNING_MODE_SELECTED));
         }
         // write the mode selected back to python for confirmation
         Serial.print(gFreeplayMode);
@@ -107,9 +110,10 @@ void setup {
 
     // IF this is the right hand, we need to receive and set the mode from the Python brain
     if(TEENSY_HAND == Hand::Right) {
-        // read from the serial input and set the mode
+        // read from the serial input and set the mode!!
 
-        // PLACEHOLDER
+        // PLACEHOLDER: TODO
+        gFreeplayMode = ;// read the serial from python and assign
     }
 
     // Step 4: Call calibration function to calibrate all sensors BASED ON MODE
@@ -131,13 +135,13 @@ void setup {
              */
             if(TEENSY_HAND == Hand::Left) {
 
-                // Step 5: SONG SELECTION
-                Serial.write(VoiceCommands:SELSONG, sizeof(SELSONG))
+                // Step 5: SONG SELECTION 
+                Serial.write(VoiceCommands:SELECT_SONG, sizeof(VoiceCommands::SELECT_SONG))
 
                 // detect and wait to see how many times button was pressed, send that 
                 // number back to the python unit - only for left hand
 
-                int songPressCount = buttonPressCount(5000, BUTTON_SONG); // 5 second window to press button
+                int songPressCount = buttonPressCount(6000, BUTTON_SONG); // 6 second window to press button
                 Serial.print(songPressCount); // send selected song number back to python
             }
             break;
@@ -146,11 +150,12 @@ void setup {
     // Step 5: Final confirmation message to python that setup is complete and game can begin.
     // really a message that says "if u press the mode button at any point during gameplay,
     // you can change modes."
-    Serial.print("VOICE MESSAGE TO CHANGE MODES YADDA YADDA YADDA HAVE FUN PLAYING")
+
+    Serial.write(VoiceCommands::HOW_TO_CHANGE_MODE, sizeof(HOW_TO_CHANGE_MODE));
 
     // final confirmation message to python - this cues it to play out 
     // final message on audio hat and then clear its input buffer or whatever needs to be done
-    Serial.print("COMPLETE");
+    Serial.write(VoiceCommands::FLUSH, sizeof(VoiceCommands::FLUSH));
 }
 
 
@@ -167,8 +172,6 @@ void loop() {
         guideFingerPress();
     }
 }
-
-
 
 /**
  * HELPER FUNCTIONS
@@ -206,16 +209,17 @@ void calibrateVelostat(unsigned int SAMPLE_COUNT = 200, unsigned int SAMPLE_PERI
   float mean; 
   float stdev; 
 
-  Serial.println(" Velostat Calibration for Open ...");
-  delay(1000); 
-  Serial.println("Please make sure all fingers are open (no pressure) Scrunch hands in and out");
-  delay(2000);
-  Serial.println("Starting now...");
+  Serial.write(VoiceCommands::CALIB_VELO_NO_PRESS, sizeof(VoiceCommands::CALIB_VELO_NO_PRESS));
+  //Serial.println(" Velostat Calibration for Open ...");
+  //delay(1000); 
+  //Serial.println("Please make sure all fingers are open (no pressure) Scrunch hands in and out");
+  //delay(2000);
+  //Serial.println("Starting now...");
 
   for (int finger = 0; finger < NUM_VELOSTAT; finger++) {
 
-    Serial.print("\nCalibrating finger ");
-    Serial.println(finger);
+    //Serial.print("\nCalibrating finger ");
+    //Serial.println(finger);
 
     sum = 0;
     sumSq = 0;
@@ -236,16 +240,18 @@ void calibrateVelostat(unsigned int SAMPLE_COUNT = 200, unsigned int SAMPLE_PERI
     open_stdevs[finger] = stdev;
   }
 
-  Serial.println(" Velostat Calibration for closed (light press)...");
-  delay(1000); 
-  Serial.println("Please hold all fingertips against surface lightly, like you are petting a cat :D");
-  delay(2000);
-  Serial.println("Starting now...");
+  delay(200);
+  Serial.write(VoiceCommands::CALIB_SOFT_PRESS, sizeof(VoiceCommands::CALIB_SOFT_PRESS));
+  //Serial.println(" Velostat Calibration for closed (light press)...");
+  //delay(1000); 
+  //Serial.println("Please hold all fingertips against surface lightly, like you are petting a cat :D");
+  //delay(2000);
+  //Serial.println("Starting now...");
 
   for (int finger = 0; finger < NUM_VELOSTAT; finger++) {
 
-    Serial.print("\nCalibrating finger ");
-    Serial.println(finger);
+    //Serial.print("\nCalibrating finger ");
+    //Serial.println(finger);
 
     sum = 0;
     sumSq = 0;
@@ -266,16 +272,17 @@ void calibrateVelostat(unsigned int SAMPLE_COUNT = 200, unsigned int SAMPLE_PERI
     soft_stdevs[finger] = stdev;
   }
 
-  Serial.println(" Velostat Calibration for closed (hard press)...");
-  delay(1000);
-  Serial.println("Please hold all fingertips against surface hard :D");
-  delay(2000);
-  Serial.println("Starting now...");
+  Serial.write(VoiceCommands::CALIB_HARD_PRESS, sizeof(VoiceCommands::CALIB_HARD_PRESS));
+  //Serial.println(" Velostat Calibration for closed (hard press)...");
+  //delay(1000);
+  //Serial.println("Please hold all fingertips against surface hard :D");
+  //delay(2000);
+  //Serial.println("Starting now...");
 
   for (int finger = 0; finger < NUM_VELOSTAT; finger++) {
 
-    Serial.print("\nCalibrating finger ");
-    Serial.println(finger);
+    //Serial.print("\nCalibrating finger ");
+    //Serial.println(finger);
 
     sum = 0;
     sumSq = 0;
@@ -302,19 +309,20 @@ void calibrateVelostat(unsigned int SAMPLE_COUNT = 200, unsigned int SAMPLE_PERI
   gBaseline[finger] = open_means[finger] + 2 * open_stdevs[finger];
   maxPress[finger] = hard_means[finger] + hard_stdevs[finger];
 
-  if (gBaseline[finger] >= maxPress[finger]) 
-  {
-    Serial.print("Calibration failed for finger ");
-    Serial.println(finger);
-    Serial.println("Please redo calibration with better finger presses");
-  } else {
-    Serial.print("Calibration successful for finger ");
-    Serial.println(finger);
-    Serial.print("Baseline: ");
-    Serial.println(gBaseline[finger]);
-    Serial.print("Max Press: ");
-    Serial.println(maxPress[finger]);
-  }
+  //TODO:  HOW DO WE EVEN ADDRESS THIS
+  // if (gBaseline[finger] >= maxPress[finger]) 
+  // {
+  //   Serial.print("Calibration failed for finger ");
+  //   Serial.println(finger);
+  //   Serial.println("Please redo calibration with better finger presses");
+  // } else {
+  //   Serial.print("Calibration successful for finger ");
+  //   Serial.println(finger);
+  //   Serial.print("Baseline: ");
+  //   Serial.println(gBaseline[finger]);
+  //   Serial.print("Max Press: ");
+  //   Serial.println(maxPress[finger]);
+  // }
 }
 }
 
@@ -324,15 +332,15 @@ void calibrateVelostat(unsigned int SAMPLE_COUNT = 200, unsigned int SAMPLE_PERI
  * and playing a test effect to ensure they are working.
  */
 void calibrateHaptics() {
-  Serial.println("Starting Haptics Calibration...");
+  //Serial.println("Starting Haptics Calibration...");
 
   for (int i = 0; i < NUM_HAPTICS; i++) {
-    Serial.print("Calibrating Haptic Motor at MUX line ");
-    Serial.println(i);
+    //Serial.print("Calibrating Haptic Motor at MUX line ");
+    //Serial.println(i);
 
     tcaSelect(HAPTIC_PINS[i]);
     if (!drv.begin()) {
-      Serial.print("Failed to initialize haptic motor at MUX line ");
+      //Serial.print("Failed to initialize haptic motor at MUX line ");
       Serial.println(i);
       continue;
     }
@@ -344,12 +352,12 @@ void calibrateHaptics() {
     drv.go();
     delay(1000); // wait for effect to finish
 
-    Serial.print("Haptic Motor at MUX line ");
-    Serial.print(i);
-    Serial.println(" calibrated successfully.");
+    //Serial.print("Haptic Motor at MUX line ");
+    //Serial.print(i);
+    //Serial.println(" calibrated successfully.");
   }
 
-  Serial.println("Haptics Calibration Complete.");
+  //Serial.println("Haptics Calibration Complete.");
 }
 
 /**
@@ -390,11 +398,11 @@ void checkFingerPress() {
 
     // transition: unpressed -> pressed
     if (currentlyPressed && !gSensorState[i]) {
-      Serial1.print("Sensor ");
-      Serial1.println(i);     // send "note on" to receiver
+      //Serial1.print("Sensor ");
+      //Serial1.println(i);     // send "note on" to receiver
     
       // SENDS TO RASPI
-      Serial.write((u_int8_t)TEENSY_HAND);
+      Serial.write(TEENSY_HAND, sizeof(TEENSY_HAND));
       Serial.write(SensorValue::Pressed);
       Serial.write(i);
 
@@ -406,7 +414,7 @@ void checkFingerPress() {
       Serial1.println(i);     // send "note off" to receiver
 
       // SENDING IT TO RASPI
-      Serial.write((u_int8_t)TEENSY_HAND);
+      Serial.write(TEENSY_HAND, sizeof(TEENSY_HAND));
       Serial.write(SensorValue::Released);
       Serial.write(i);     // send "note off" to receiver
 
