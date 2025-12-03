@@ -3,6 +3,8 @@
 #include <Wire.h>
 #include "Adafruit_DRV2605.h"
 
+// I'm a floo flammer homie all these chains on my neck I need two hammers homie
+
 /**
  * Working toward putting setups for both modes in here - freeplay and learning.
  * Calls proper calibration script, as well as finger press checking function.
