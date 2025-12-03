@@ -136,7 +136,7 @@ void setup {
             if(TEENSY_HAND == Hand::Left) {
 
                 // Step 5: SONG SELECTION 
-                Serial.write(VoiceCommands:SELECT_SONG, sizeof(VoiceCommands::SELECT_SONG))
+                Serial.write(VoiceCommands:SELECT_SONG, sizeof(VoiceCommands::SELECT_SONG));
 
                 // detect and wait to see how many times button was pressed, send that 
                 // number back to the python unit - only for left hand
