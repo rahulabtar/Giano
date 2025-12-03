@@ -1,4 +1,3 @@
-/*
 
 // Simple WAV file player + test sine tone in setup()
 
@@ -59,7 +58,44 @@ void playInstr(const char *filename)
 }
 
 void loop() {
-  playInstr("BOOTED.wav");   // Must be uppercase 8.3
+  //playInstr("BOOTED.wav");   // Must be uppercase 8.3
+  playInstr("BADPOST.wav");   
+  delay(10000);
+  playInstr("BEGCAL.wav");
+  delay(10000);
+  playInstr("BOOTED.wav");
+  delay(10000);
+  playInstr("CALFAIL.wav");
+  delay(10000);
+  playInstr("CALHARD.wav");
+  delay(10000);
+  playInstr("CAL.wav"); // just says calibrating 
+  delay(10000);
+  playInstr("CALSINE.wav"); 
+  delay(10000);
+  playInstr("CALSOFT.wav");
+  delay(10000);
+  playInstr("CALSUCC.wav");
+  delay(10000);
+  playInstr("CONFIRM.wav");
+  delay(10000);
+  playInstr("CONFSONG.wav");
+  delay(10000);
+  playInstr("DEBUG.wav");
+  delay(10000);
+  playInstr("FREEMOD.wav");
+  delay(10000);
+  playInstr("HOWMOD.wav");
+  delay(10000);
+  playInstr("HOWRS.wav");
+  delay(10000);
+  playInstr("LEARNMOD.wav");
+  delay(10000);
+  playInstr("SELMOD.wav");
+  delay(10000);
+  playInstr("SELSONG.wav");
+  delay(10000);
+  playInstr("WELCOME.wav");
   //check play Instr note
   delay(10000);
 }
@@ -74,5 +110,3 @@ void loop() {
 //   playInstr("DEBUG.wav");
 //   playInstr("CONFSONG.wav");
 //   playInstr("CONFIRM.wav");
-
-*/
