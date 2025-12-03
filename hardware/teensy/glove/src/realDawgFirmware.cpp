@@ -2,6 +2,7 @@
 #include <serial_commands.h>
 #include <Wire.h>
 #include "Adafruit_DRV2605.h"
+#include <learning_mode.h>
 
 /**
  * Working toward putting setups for both modes in here - freeplay and learning.
@@ -53,6 +54,11 @@ Adafruit_DRV2605 drv;
 
 
 // LEARNING MODE SETUP VARIABLES AND DATA SETS
+FingerInstructionSet receiveFinger; // to use for receiving and assigning data from python instructions
+OctaveInstructionSet receiveOctave; // same thing but for octave
+
+FingerInstructionSet sendFinger; // to use for constructing and sending back to python for confirmation (may not be needed)
+OctaveInstructionSet sendOctave; // to use for confirmation with CV?? will be constantly updating
 
 
 /**
@@ -380,7 +386,7 @@ int buttonPressCount(unsigned long timeWindow, int buttonPin) {
     while (millis() - start < timeWindow) {
         bool currentState = digitalRead(buttonPin);
 
-        // detect falling edge to count a valid pres
+        // detect falling edge to count a valid press
         if (lastState == HIGH && currentState == LOW) {
             count++;
             delay(50);  // basic debounce
@@ -441,12 +447,49 @@ void checkFingerPress() {
  */
 void guideFingerPress() {
     // Step 1: Get the set of finger instructions that need to happen
+    receiveFinger.FingerNumber = Serial.read(); // TODO: FIGURE OUT HOW TO PROPERLY READ FROM PYTHON
+    receiveFinger.MIDINumber = Serial.read(); // TODO: FIGURE OUT HOW TO PROPERLY READ FROM PYTHON
+
+    receiveOctave.handPosition = Serial.read(); // TODO: FIGURE OUT HOW TO PROPERLY READ - DO WE NEED TO SEPARATE INTO 
+    // INDICES OR CAN WE READ AND ASSIGN BOTH INDICES AT ONCE FROM PYTHON
 
     // Step 2: Apply it using haptics 
+    tcaSelect(receiveFinger.FingerNumber); // select the correct finger to vibrate
+    // TODO: SEND A VIBRATION TO THAT FINGER TO LET PERSON KNOW TO MOVE IT
+
+    // TODO: FIGURE OUT HOW TO GET POSN OF HAND CURRENTLY AND ASSIGN IT TO SENDOCTAVE.HANDPOSN
+    while (sendOctave.handPosition[0] != receiveOctave.handPosition[0]) {
+      // now, check conditions of where it needs to move on the mat:
+      // TODO: FIGURE OUT HOW TO GET POSN OF HAND CURRENTLY AND ASSIGN IT TO SENDOCTAVE.HANDPOSN
+      if (sendOctave.handPosition[0] < receiveOctave.handPosition[0]) {
+        tcaSelect("RIGHT WRIST MOTOR INDEX TODO");
+        // TODO: vibrate it a little or continously??
+        // TODO: FIGURE OUT HOW TO FLAG CV TO CONFIRM IF POSN IS NOW RIGHT - GET IT TO RE ASSIGN SEND OCTAVE HAND POSN
+      }
+      if (sendOctave.handPosition[0] > receiveOctave.handPosition[0]) {
+        tcaSelect("RIGHT LEFT MOTOR INDEX TODO");
+        // TODO: vibrate it a little or continously??
+        // TODO: FIGURE OUT HOW TO FLAG CV TO CONFIRM IF POSN IS NOW RIGHT - GET IT TO RE ASSIGN SEND OCTAVE HAND POSN
+      }
+    }
+
+    // now once the hand positions are equal
+    tcaSelect(receiveFinger.FingerNumber);
+    // TODO MAKE IT VIBRATE AGAIN SO THE USER KNOWS TO PRESS
 
     // Step 3: detect a finger press, when that happens send back to Raspi for 
     // confirmation
 
+    checkFingerPress(); // NOW CHECK TO SEE IF THE RIGHT THING WAS PRESSED?
+
+    // TODO: FIGURE OUT HOW TO HAVE THE SENSOR THAT WAS PRESSED ASSIGN TO SENDFINGER.FINGERNUMBER
+    // we can safely set this because the hand positions match now
+    sendFinger.MIDINote = receiveFinger.MIDINote;
+
+
+    // TODO: SEND OUT THE ENTIREY OF THE TWO SEND SETS 
+    // OR OPTIONALLY COMPARE ALL THE FIELDS OF EACH AND IF THEY ARE EQUAL SEND OUT TO PYTHON THAT WE CAN MOVE ONTO NEXT INSTRUCTION
+    
 }
 
 
