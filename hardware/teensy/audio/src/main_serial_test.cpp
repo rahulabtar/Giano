@@ -1,6 +1,7 @@
 #include "midi_process.h"
 #include <Arduino.h>
 #include "teensyPiano.h"
+#include <serial_commands.h>
 #include "voiceCommands.h"
 
 TeensyPiano piano; 
@@ -21,6 +22,9 @@ void setup() {
 
     Serial.begin(115200);
     delay(100);
+
+    Serial.write(Hand::Audio, sizeof(Hand::Audio));
+
     Serial.println("Setting up SD Card...");
     int sdSuccess = voiceCmds.setUpSD();
     Serial.print("SD setup returned: ");

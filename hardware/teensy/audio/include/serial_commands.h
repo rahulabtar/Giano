@@ -2,6 +2,14 @@
 #pragma once
 #include <Arduino.h>
 
+
+enum class Hand : uint8_t 
+{
+  Audio = 0xFD,
+  Left = 0xFE,
+  Right
+};
+
 enum class PlayingMode: u_int8_t {
   LEARNING_MODE = 0,
   FREEPLAY_MODE = 1,
