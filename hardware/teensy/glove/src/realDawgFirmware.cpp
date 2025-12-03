@@ -110,8 +110,12 @@ void calibrateVelostat(unsigned int SAMPLE_COUNT = 200, unsigned int SAMPLE_PERI
   float stdev; 
 
   Serial.write(static_cast<uint8_t>(VoiceCommands::CALIB_VELO_NO_PRESS));
+  delay(5500);
   Serial.write(static_cast<uint8_t>(VoiceCommands::CALIBRATING));
+  delay(2500);
   Serial.write(static_cast<uint8_t>(VoiceCommands::CALIBRATE_SINE_WAVE));
+  delay(8500);
+
   //Serial.println(" Velostat Calibration for Open ...");
   //delay(1000); 
   //Serial.println("Please make sure all fingers are open (no pressure) Scrunch hands in and out");
@@ -144,8 +148,11 @@ void calibrateVelostat(unsigned int SAMPLE_COUNT = 200, unsigned int SAMPLE_PERI
 
   delay(200);
   Serial.write(static_cast<uint8_t>(VoiceCommands::CALIB_SOFT_PRESS));
+  delay(5500);
   Serial.write(static_cast<uint8_t>(VoiceCommands::CALIBRATING));
+  delay(2500);
   Serial.write(static_cast<uint8_t>(VoiceCommands::CALIBRATE_SINE_WAVE));
+  delay(8500);
   //Serial.println(" Velostat Calibration for closed (light press)...");
   //delay(1000); 
   //Serial.println("Please hold all fingertips against surface lightly, like you are petting a cat :D");
@@ -177,8 +184,11 @@ void calibrateVelostat(unsigned int SAMPLE_COUNT = 200, unsigned int SAMPLE_PERI
   }
 
   Serial.write(static_cast<uint8_t>(VoiceCommands::CALIB_HARD_PRESS));
+  delay(5500);
   Serial.write(static_cast<uint8_t>(VoiceCommands::CALIBRATING));
+  delay(2500);
   Serial.write(static_cast<uint8_t>(VoiceCommands::CALIBRATE_SINE_WAVE));
+  delay(8500);
   //Serial.println(" Velostat Calibration for closed (hard press)...");
   //delay(1000);
   //Serial.println("Please hold all fingertips against surface hard :D");
@@ -219,9 +229,11 @@ void calibrateVelostat(unsigned int SAMPLE_COUNT = 200, unsigned int SAMPLE_PERI
   if (gBaseline[finger] >= maxPress[finger]) 
   {
     Serial.write(static_cast<uint8_t>(VoiceCommands::CALIBRATION_FAILED));
+    delay(2500);
     calibrateVelostat();
   } else {
     Serial.write(static_cast<uint8_t>(VoiceCommands::CALIBRATION_SUCCESS));
+    delay(2500);
     // Serial.println(finger);
     // Serial.print("Baseline: ");
     // Serial.println(gBaseline[finger]);
@@ -246,7 +258,7 @@ void calibrateHaptics() {
     tcaSelect(HAPTIC_PINS[i]);
     if (!drv.begin()) {
       //Serial.print("Failed to initialize haptic motor at MUX line ");
-      Serial.println(i);
+      //Serial.println(i);
       continue;
     }
     drv.setMode(DRV2605_MODE_INTTRIG);
@@ -346,12 +358,6 @@ void guideFingerPress() {
 
 }
 
-
-
-
-
-
-
 /**
  * SETUP FUNCTION TO RUN AT STARTUP AND AID IN SELECTING SONG/ MODE
  */
@@ -371,6 +377,7 @@ void setup() {
 
     // BOOTUP SOUND
     Serial.write(static_cast<uint8_t>(VoiceCommands::WELCOME_MUSIC));
+    delay(5000);
 
     // Step 2: Initialize all necessary sensors/button components for setup logic
     // we only want buttons to work if on left hand
@@ -390,7 +397,9 @@ void setup() {
         // "welcome to GIANO, please select the mode by pressing the leftmost button. once 
         // for freeplay, twice for learning mode."
         Serial.write(static_cast<uint8_t>(VoiceCommands::WELCOME_TEXT));
+        delay(2500);
         Serial.write(static_cast<uint8_t>(VoiceCommands::MODE_SELECT_BUTTONS));
+        delay(5500);
 
         // wait adequate time for user to press button, detect how many times it was pressed 
         // in that window of time, and set mode accordingly
@@ -401,59 +410,63 @@ void setup() {
         if(modePressCount == 1) {
             gFreeplayMode = true; 
             Serial.write(static_cast<uint8_t>(VoiceCommands::FREEPLAY_MODE_CONFIRM));
+            delay(1500);
         } else if (modePressCount >= 2) {
             gFreeplayMode = false; 
             Serial.write(static_cast<uint8_t>(VoiceCommands::LEARNING_MODE_CONFIRM));
+            delay(1500);
+        } else {
+        gFreeplayMode = true;  // default to freeplay
         }
         // write the mode selected back to python for confirmation
-        Serial.print(gFreeplayMode);
-
+        Serial.write(static_cast<uint8_t>(gFreeplayMode));
     }
 
     // IF this is the right hand, we need to receive and set the mode from the Python brain
     if(TEENSY_HAND == Hand::Right) {
         // read from the serial input and set the mode!!
-
-        // PLACEHOLDER: TODO
-        // gFreeplayMode = ;// read the serial from python and assign
+        while(!Serial.available()) {
+        delay(5);
+      }
+      uint8_t modeByte = Serial.read();
+      gFreeplayMode = (modeByte == 1); // TODO CHECK IF THIS IS RIGHT
     }
 
     // Step 4: Call calibration function to calibrate all sensors BASED ON MODE
     // if freeplay mode only call velostat and flex sensor calibration
     // if learning mode call velostat, flex, and haptic calibration (needs mux)
-    switch(gFreeplayMode) {
-        case true:
-            gFreeplayMode = true;
-            calibrateVelostat(); // only calibrate velostat and flex sensors
-            break;
-        case false:
-            gFreeplayMode = false;
-            calibrateVelostat(); // velostat and flex sensors
-            calibrateHaptics(); // haptics calibration function
-            
-            /**
-             * You have selected learning mode. Please select a song by pressing the rightmost button
-             * once for Song 1, twice for Song 2, thrice for Song 3.
-             */
-            if(TEENSY_HAND == Hand::Left) {
+    if (gFreeplayMode) {
+      calibrateVelostat(); // only calibrate velostat and flex sensors
+    } else {
+      calibrateVelostat(); // velostat and flex sensors
+      calibrateHaptics(); // haptics calibration function
 
-                // Step 5: SONG SELECTION 
-                Serial.write(static_cast<uint8_t>(VoiceCommands::SELECT_SONG));
+      /**
+      * You have selected learning mode. Please select a song by pressing the rightmost button
+      * once for Song 1, twice for Song 2, thrice for Song 3.
+      */
+      if (TEENSY_HAND == Hand::Left) {
+          // Step 5: SONG SELECTION 
+          Serial.write(static_cast<uint8_t>(VoiceCommands::SELECT_SONG));
+          delay(7500);
 
-                // detect and wait to see how many times button was pressed, send that 
-                // number back to the python unit - only for left hand
+          // detect and wait to see how many times button was pressed, send that 
+          // number back to the python unit - only for left hand
 
-                int songPressCount = buttonPressCount(6000, BUTTON_SONG); // 6 second window to press button
-                Serial.print(songPressCount); // send selected song number back to python
-            }
-            break;
+          int songPressCount = buttonPressCount(6000, BUTTON_SONG); // 6 second window to press button
+          Serial.write(static_cast<uint8_t>(songPressCount)); // send selected song number back to python
+      }
     }
 
-    // Step 5: Final confirmation message to python that setup is complete and game can begin.
+
+    // Step 6: Final confirmation message to python that setup is complete and game can begin.
     // really a message that says "if u press the mode button at any point during gameplay,
     // you can change modes."
 
     Serial.write(static_cast<uint8_t>(VoiceCommands::HOW_TO_CHANGE_MODE));
+    delay(5500);
+    Serial.write(static_cast<uint8_t>(VoiceCommands::HOW_TO_CHANGE_SONG));
+    delay(5500);
 
     // final confirmation message to python - this cues it to play out 
     // final message on audio hat and then clear its input buffer or whatever needs to be done
