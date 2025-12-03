@@ -12,16 +12,16 @@
 #define SDCARD_MOSI_PIN  7   // Teensy 4 ignores this
 #define SDCARD_SCK_PIN   14  // Teensy 4 ignores this
 
-#define BOOTED_SD "BOOTED.wav"   // Must be uppercase 8.3
+#define WELCOME_MUSIC "BOOTED.wav"   // Must be uppercase 8.3
 #define WELCOME_SD "WELCOME.wav"
-#define SELSONG_SD "SELSONG.wav"
-#define LEARNMOD_SD "LEARNMOD.wav"
-#define HOW_RESET_SD "HOWRS.wav"
-#define HOW_MODE_SD "HOWMOD.wav"
-#define FREE_MODE_SD "FREEMOD.wav"
+#define SELECT_SONG_SD "SELSONG.wav"
+#define LEARNING_MODE_SELECTED_SD "LEARNMOD.wav"
+#define HOW_TO_RESET_SD "HOWRS.wav"
+#define HOW_TO_CHANGE_MODE_SD "HOWMOD.wav"
+#define FREEPLAY_MODE_SELECTED_SD "FREEMOD.wav"
 #define DEBUG_SD "DEBUG.wav"
-#define CONFSONG_SD "CONFSONG.wav"
-#define CONFIRM_SD "CONFIRM.wav"
+#define CONFIRM_SONG_SD "CONFSONG.wav" // DON'T NEED CONFIRM_SONG
+#define CONFIRM_SD "CONFIRM.wav" // DON'T NEED CONFIRM_SELECTION
 
 class VoiceCommands {
   public:
