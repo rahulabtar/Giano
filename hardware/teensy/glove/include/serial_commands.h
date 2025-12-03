@@ -3,7 +3,7 @@
 
 enum class Hand : uint8_t 
 {
-  Audio = OxFD,
+  Audio = 0xFD,
   Left = 0xFE,
   Right
 };
