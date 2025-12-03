@@ -1,8 +1,13 @@
 // codes for messages we get from Serial
 #pragma once
 #include <Arduino.h>
+
+enum class PlayingMode: u_int8_t {
+
+};
+
 enum class VocalCommandCodes: u_int8_t {
-  WELCOME_MUSIC = 0x7F,
+  WELCOME_MUSIC = 16,
   WELCOME_TEXT,
   MODE_SELECT_BUTTONS,
   FREEPLAY_MODE_CONFIRM,

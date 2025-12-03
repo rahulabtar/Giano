@@ -74,12 +74,9 @@ class ActionCode(IntEnum):
     ERROR = 5                # Error state
 
 
-# TODO: Add MIDI control codes
-class MIDIControl(IntEnum):
-    """MIDI command codes."""
-    NOTE_OFF = 0x80
-    NOTE_ON = 0x90
-    CONTROL_CHANGE = 0xB0
+
+
+
 
 
 class GloveProtocolFreeplayMode:
@@ -175,17 +172,22 @@ class GloveProtocolLearningMode:
         # Add validation logic for responses (e.g., ACK, error codes)
         return 0 <= motor_id <= 4 and 0 <= midi_note <= 127 and 0 <= action <= 5
 
-class voice_command(IntEnum):
-    "BOOTED" = 0
-    "WELCOME" = 1
-    "SELSONG" = 2
-    "LEARNMOD" = 3
-    "HOWRS" = 4
-    "HOWMOD" = 5   
-    "FREEMOD" = 6
-    "DEBUG" = 7
-    "CONFSONG" = 8
-    "CONFIRM" = 9
+
+# ENUM FOR VOICE COMMANDS COMING FROM THE GLOVE CONTROLLER AND GOING TO THE AUDIO TEENSY
+class VoiceCommand(IntEnum):
+    WELCOME_MUSIC = 16
+    WELCOME_TEXT = 17
+    MODE_SELECT_BUTTONS = 18
+    FREEPLAY_MODE_CONFIRM = 19
+    LEARNING_MODE_SELECTED = 20
+    CALIB_VELO_NO_PRESS = 21
+    CALIB_SOFT_PRESS = 22
+    CALIB_HARD_PRESS = 23
+    HOW_TO_CHANGE_MODE = 24
+    CONFIRM_SONG = 25
+    CONFIRM_SELECTION = 26
+    DEBUG = 254
+    INVALID = 255
 
 class AudioProtocol:
     
@@ -194,32 +196,45 @@ class AudioProtocol:
 
     def note_on(self, note: int, velocity: int = 100):
         if (note < 60): return #values less than 60 are reserved for voice commands
+        if note > 127:
+            raise ValueError(f"Invalid MIDI note value: {note}. MIDI notes must be 0-127.")
         velocity = 127 if velocity > 127 else velocity
         velocity = 0 if velocity < 0 else velocity
         self.out.send(mido.Message('note_on', note=note, velocity=velocity, channel=0))
     
     def note_off(self, note: int, velocity: int = 0):
         if (note < 60): return #values less than 60 are reserved for voice commands
+        if note > 127:
+            raise ValueError(f"Invalid MIDI note value: {note}. MIDI notes must be 0-127.")
         self.out.send(mido.Message('note_off', note=note, velocity=velocity, channel=0))
     
-    def play_voice_command(self, command: voice_command):
-        self.out.send(mido.Message('note_on', note=command.value, velocity=127, channel=0))
-        self.out.send(mido.Message('note_off', note=command.value, velocity=0, channel=0))
-
-
-def map_mediapipe_to_motor(mediapipe_finger_id: int) -> int:
-    """
-    Map MediaPipe finger ID to motor ID.
-    
-    MediaPipe finger IDs: 4=thumb, 8=index, 12=middle, 16=ring, 20=pinky
-    Motor IDs: 0=thumb, 1=index, 2=middle, 3=ring, 4=pinky
-    
-    Args:
-        mediapipe_finger_id: MediaPipe landmark ID
+    def play_voice_command(self, command: VoiceCommand):
+        """
+        Play a voice command by sending it as a MIDI note.
         
-    Returns:
-        Motor ID (0-4)
-    """
-    mapping = {4: 0, 8: 1, 12: 2, 16: 3, 20: 4}
-    return mapping.get(mediapipe_finger_id, -1)
+        WARNING: Values 254 (DEBUG) and 255 (INVALID) are outside the standard
+        MIDI note range (0-127). These values will NOT work correctly with
+        standard MIDI protocol. If your Teensy firmware requires these exact
+        values, you may need to:
+        1. Use raw serial communication instead of MIDI
+        2. Map these to valid MIDI values (e.g., use Control Change messages)
+        3. Use a different MIDI message type that supports these values
+        
+        For now, values > 127 will raise a ValueError.
+        """
+        note_value = command.value
+        
+        # MIDI note values are strictly 0-127
+        if note_value > 127:
+            raise ValueError(
+                f"VoiceCommand {command.name} has value {note_value} which exceeds "
+                f"MIDI note range (0-127). Cannot send via standard MIDI protocol. "
+                f"Consider using raw serial or a different communication method."
+            )
+        
+        self.out.send(mido.Message('note_on', note=note_value, velocity=127, channel=0))
+        self.out.send(mido.Message('note_off', note=note_value, velocity=0, channel=0))
+
+
+
 

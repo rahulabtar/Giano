@@ -97,17 +97,14 @@ class BaseSerialManager:
         self.disconnect()
 
 
-class GloveSerialManager(BaseSerialManager):
+class LeftGloveSerialManager(BaseSerialManager):
     """
-    Manages serial communication with glove controller for haptic feedback.
+    Manages serial communication with left glove controller for haptic feedback.
     """
     
     def __init__(self, 
-                 source_hand: Literal['L', 'R'],
                  port: Optional[str] = None, 
-
-                 play_mode: PlayMode = PlayMode.FREEPLAY_MODE,
-                 baud_rate: int = 115200, 
+                 baud_rate: int = SERIAL_BAUD_RATE, 
                 ):
         """
         Initialize glove serial manager.
@@ -131,15 +128,15 @@ class GloveSerialManager(BaseSerialManager):
         # Callback for incoming messages
         self.callback: Optional[Callable] = None
         
-        self.hand = source_hand
-        self._play_mode = play_mode
+        self.hand = Hand.LEFT
+        
 
         
     
-    def connect(self) -> bool:
+    def connect(self) -> Tuple[bool, ]:
         """
-        Connect to glove controller.
-        
+        Connect to left glove controller.
+        MUST BE CALLED BEFORE LeftGloveSerialManager.start()
         Returns:
             True if connection successful, False otherwise
         """
@@ -166,42 +163,78 @@ class GloveSerialManager(BaseSerialManager):
         return False
     
     def _test_port(self, port: str) -> bool:
-        """Test if port is glove controller."""
-        # TODO: Test device identification logic
-        # For now, return True if port is open
+        """
+        Test if port is glove controller.
+        
+        Note: This consumes the hand identifier byte from the serial stream.
+        If the glove only sends this byte once on startup, repeated calls to
+        _auto_connect() may fail to detect the correct port.
+        """
         try:
             s = serial.Serial(port, self.baud_rate, timeout=0.1)
-            glove_hand = s.read(1)
-            if glove_hand == Hand.LEFT & self.hand == 'L':
+            # Read hand identifier byte (consumes it from the stream)
+            glove_hand_bytes = s.read(1)
+            s.close()
+            
+            if not glove_hand_bytes:
+                return False
+            
+            # Convert bytes to int for comparison with IntEnum
+            glove_hand_value = glove_hand_bytes[0]
+            
+            print(f"Glove hand value: {glove_hand_value}")
+            print(f"Expected hand: {self.hand}")
+
+            # Check if this port matches the expected hand
+            if glove_hand_value == Hand.LEFT.value and self.hand == Hand.LEFT:
                 logger.info(f"Found {self.hand}-hand glove controller on {port}")
-                s.close()
                 return True
-            elif glove_hand == Hand.RIGHT & self.hand == 'R':
+            elif glove_hand_value == Hand.RIGHT.value and self.hand == Hand.RIGHT:
                 logger.info(f"Found correct {self.hand}-hand glove controller on {port}")
-                s.close()
                 return True
             else:
-                logger.warning(f"Found incorrect {glove_hand}-hand glove controller on {port}, switching hand info...")
-                s.close()
-                self.hand = glove_hand
+                # Update hand if we found a different one
+                detected_hand = Hand(glove_hand_value)
+                logger.warning(f"Found {detected_hand}-hand glove controller on {port}, expected {self.hand}")
+                self.hand = detected_hand
                 return False
-        except:
+        except Exception as e:
+            logger.debug(f"Error testing port {port}: {e}")
             return False
     
     def start(self):
-        """Start all communication threads."""
+        """
+        Start all communication threads.
+
+        This will correspond to setup on the left glove controller.
+        
+        Note: This consumes the mode byte from the serial stream.
+        If the glove only sends this byte once on startup, ensure it's
+        available when start() is called.
+        """
         if self._running or not self.conn:
             return
         
         if self.conn.in_waiting > 0:
-            # read the first byte in stream to get the mode info
-            mode = self.conn.read(1)
-            if mode == PlayMode.LEARNING_MODE:
+            # Read the first byte in stream to get the mode info (consumes it)
+            mode_bytes = self.conn.read(1)
+            
+            if not mode_bytes:
+                logger.warning("No mode byte received from glove controller")
+                return
+            
+            # Convert bytes to int for comparison
+            mode_value = mode_bytes[0]
+            
+            print(f"Mode: {mode_value} from {self.hand}-hand glove controller")
+            
+            # PlayMode is a regular Enum, so compare with .value
+            if mode_value == PlayMode.LEARNING_MODE.value:
                 self._play_mode = PlayMode.LEARNING_MODE
-            elif mode == PlayMode.FREEPLAY_MODE:
+            elif mode_value == PlayMode.FREEPLAY_MODE.value:
                 self._play_mode = PlayMode.FREEPLAY_MODE
             else:
-                raise ValueError(f"Invalid play mode: {mode}")
+                raise ValueError(f"Invalid play mode: {mode_value}")
 
         self._running = True
         
@@ -323,175 +356,6 @@ class GloveSerialManager(BaseSerialManager):
                 logger.warning("Glove recv queue full, dropping data")
             except Exception as e:
                 logger.error(f"Error receiving glove message: {e}")
-                time.sleep(0.1)
-
-
-#TODO: audio serial manager should use MIDO
-class AudioSerialManager(BaseSerialManager):
-    """
-    Manages serial communication with audio board for MIDI playback.
-    """
-    
-    def __init__(self, port: Optional[str] = None, baud_rate: int = 115200,
-                 auto_connect: bool = True):
-        """
-        Initialize audio serial manager.
-        
-        Args:
-            port: Serial port for audio board (None for auto-detect)
-            baud_rate: Baud rate for serial communication
-            auto_connect: If True, automatically connect on init
-        """
-        super().__init__(port, baud_rate)
-        
-        # Queues for non-blocking I/O
-        self.send_queue = queue.Queue(maxsize=100)
-        self.recv_queue = queue.Queue(maxsize=100)
-        
-        # Threads
-        self._send_thread: Optional[threading.Thread] = None
-        self._recv_thread: Optional[threading.Thread] = None
-        
-        # Callback for incoming messages
-        self.callback: Optional[Callable] = None
-        
-        if port is None:
-            self.connect()
-    
-    def connect(self, exclude_ports: Optional[List[str]] = None) -> bool:
-        """
-        Connect to audio board.
-        
-        Args:
-            exclude_ports: List of ports to exclude from auto-detection
-        
-        Returns:
-            True if connection successful, False otherwise
-        """
-        if self.port:
-            result = self._connect(self.port)
-        else:
-            result = self._auto_connect(exclude_ports=exclude_ports)
-        
-        if result:
-            self.start()
-        
-        return result
-    
-    def _auto_connect(self, exclude_ports: Optional[List[str]] = None) -> bool:
-        """Auto-detect and connect to audio board."""
-        available_ports = self._list_serial_ports()
-        
-        if exclude_ports is None:
-            exclude_ports = []
-        
-        for port in available_ports:
-            if port in exclude_ports:
-                continue
-            if self._test_port(port):
-                return self._connect(port)
-        
-        logger.warning("Could not auto-detect audio board")
-        return False
-    
-    def _test_port(self, port: str) -> bool:
-        """Test if port is audio board."""
-        # TODO: Implement device identification logic
-        try:
-            s = serial.Serial(port, self.baud_rate, timeout=0.1)
-            s.close()
-            return True
-        except:
-            return False
-    
-    def start(self):
-        """Start all communication threads."""
-        if self._running or not self.conn:
-            return
-        
-        self._running = True
-        
-        self._send_thread = threading.Thread(
-            target=self._send_worker, daemon=True)
-        self._recv_thread = threading.Thread(
-            target=self._recv_worker, daemon=True)
-        self._send_thread.start()
-        self._recv_thread.start()
-        
-        logger.info("Audio serial manager started")
-    
-    def stop(self):
-        """Stop all communication threads."""
-        super().stop()
-        
-        if self._send_thread:
-            self._send_thread.join(timeout=1)
-        if self._recv_thread:
-            self._recv_thread.join(timeout=1)
-        
-        logger.info("Audio serial manager stopped")
-    
-    def send_note_on(self, note: int, velocity: int = 100):
-        """
-        Send note-on to audio board (non-blocking).
-        
-        Args:
-            note: MIDI note number
-            velocity: Velocity/volume (0-127)
-        """
-        message = AudioProtocol.pack_note_on(note, velocity)
-        try:
-            self.send_queue.put_nowait(message)
-        except queue.Full:
-            logger.warning("Audio send queue full, dropping message")
-    
-    def send_note_off(self, note: int):
-        """Send note-off to audio board."""
-        message = AudioProtocol.pack_note_off(note)
-        try:
-            self.send_queue.put_nowait(message)
-        except queue.Full:
-            logger.warning("Audio send queue full, dropping message")
-    
-    def get_responses(self) -> List[bytes]:
-        """Get all pending audio responses."""
-        responses = []
-        while not self.recv_queue.empty():
-            try:
-                responses.append(self.recv_queue.get_nowait())
-            except queue.Empty:
-                break
-        return responses
-    
-    def set_callback(self, callback: Callable):
-        """Set callback for incoming audio messages."""
-        self.callback = callback
-    
-    def _send_worker(self):
-        """Worker thread for sending to audio board."""
-        while self._running:
-            try:
-                message = self.send_queue.get(timeout=0.1)
-                if self.conn:
-                    self.conn.write(message)
-            except queue.Empty:
-                continue
-            except Exception as e:
-                logger.error(f"Error sending audio message: {e}")
-    
-    def _recv_worker(self):
-        """Worker thread for receiving from audio board."""
-        while self._running:
-            try:
-                if self.conn and self.conn.in_waiting > 0:
-                    data = self.conn.read(self.conn.in_waiting)
-                    self.recv_queue.put_nowait(data)
-                    if self.callback:
-                        self.callback(data)
-            except queue.Full:
-                logger.warning("Audio recv queue full, dropping data")
-            except Exception as e:
-                logger.error(f"Error receiving audio message: {e}")
                 time.sleep(0.1)
 
 

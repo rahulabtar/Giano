@@ -21,3 +21,4 @@ __pycache__
 .DS_Store
 
 src/computer_vision/calibration_output/*
+src/computer_vision/add_top_line.py
