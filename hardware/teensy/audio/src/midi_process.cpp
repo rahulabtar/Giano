@@ -66,22 +66,16 @@ void processMIDIData(){
         const char* filename = voiceCmds.getFileName(command);
         voiceCmds.playInstruction(filename);
       }
-      // Serial.print("Note ON, ch=");
-      // Serial.print(channel, DEC);
-      // Serial.print(", note=");
-      // Serial.print(pitch, DEC);
-      // Serial.print(", velocity=");
-      // Serial.println(velocity, DEC);
       break;
 
     case usbMIDI.NoteOff:
-      terminateAudioHat(pitch);
-      // Serial.print("Note OFF, ch=");
-      // Serial.print(channel, DEC);
-      // Serial.print(", note=");
-      // Serial.print(pitch, DEC);
-      // Serial.print(", velocity=");
-      // Serial.println(velocity, DEC);
+      if (pitch >= 60){
+        terminateAudioHat(pitch);
+      }
+      else{
+        Serial.println(" Stopping voice command...");
+        voiceCmds.playWav1.stop();  
+      }
       break;
   }
 }

@@ -5,8 +5,6 @@ int TeensyPiano::setup() {
   if (NUM_VOICES > 16)
     { return -1; }
   
-  
-  
   // we just resize the voices_ and voice_connections_
   // vectors to the number of voices
   

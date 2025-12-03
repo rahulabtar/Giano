@@ -13,7 +13,7 @@ int VoiceCommands::setUpSD(){
     return -1;
   }
   isSetup_ = true;
-  AudioPlaySdWav playWav1;
+  //AudioPlaySdWav playWav1;
   return 0;
 }
 
