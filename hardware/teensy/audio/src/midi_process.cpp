@@ -1,20 +1,22 @@
 #include <Arduino.h>
 #include <usb_midi.h>
-
+#include "midi_process.h"
+#include "piano_globals.h"
 /**
   Function to pass off audio processing/handling for ON
 */
-void playAudioHat() {
+void playAudioHat(uint8_t pitch, uint8_t velocity) {
   // FILLER STUB FOR NOW, just to check if it reaches here
-  Serial.println("Congrats! You played a note!");
+  Serial.println(" Congrats! You played a note!");
+  piano.voiceOn(0, pitch, velocity);
 }
-
 /**
   Function to pass off audio processing/handling for OFF
 */
 void terminateAudioHat() {
   // FILLER STUB FOR NOW, just to check if it reaches here
-  Serial.println("Note stopped! Play the next!");
+  Serial.println(" Note stopped! Play the next!");
+  piano.voiceOff(0); 
 }
 
 /**
@@ -39,8 +41,8 @@ void processMIDIData(){
   // NOTE: there are other cases we can play around with if needed!
   switch(onStatus) {
     case usbMIDI.NoteOn:
-      playAudioHat();
-      Serial.print("Note OFF, ch=");
+      playAudioHat(pitch, velocity);
+      Serial.print("Note ON, ch=");
       Serial.print(channel, DEC);
       Serial.print(", note=");
       Serial.print(pitch, DEC);
