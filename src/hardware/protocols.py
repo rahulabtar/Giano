@@ -199,7 +199,7 @@ class VoiceCommand(IntEnum):
 
 class AudioProtocol:
     
-    def __init__(self, output = 'Teensy MIDI:Teensy MIDI MIDI 1 24:0'):
+    def __init__(self, output = 'Teensy MIDI/Audio'):
         self.out = mido.open_output(output)
 
     def note_on(self, note: int, velocity: int = 100):

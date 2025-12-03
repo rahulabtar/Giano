@@ -6,7 +6,7 @@
 #include "consts.h"
 
 // base FM depth; adjust to taste
-const float kModDepth = 3.0f; 
+const float kModDepth = 2.0f; 
 
 // base ratio of modulator to fundamental
 const float kModRatio = 14.0f;
