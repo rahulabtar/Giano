@@ -25,7 +25,8 @@ const int NUM_VELOSTAT = 5;
 // array of size of # of velostat sensors, sets their pins - ADD THIS
 // thumb index 0, pinky at 4. ON LEFT GLOVE: PINKY IS LEFTMOST CONNECTOR
 // ON RIGHT GLOVE: THUMB IS LEFTMOST CONNECTOR.
-const int VELOSTAT_PINS[NUM_VELOSTAT] = {A0, A1, A2, A3, A4}; 
+// these numbers swap order for right glove.
+const int VELOSTAT_PINS[NUM_VELOSTAT] = {14, 18, 19, 21, 20}; 
 // set default state of pressed vs unpressed to be unpressed
 bool gPressed = false; 
 // array to hold state of each sensor (pressed or unpressed)
@@ -43,9 +44,9 @@ const int ADC_BITS = 12;
 // HAPTIC SETUP VARIABLES
 const int NUM_HAPTICS = 7; 
 // SET THUMB at index 0, Pinky at 4, left wrist 5, right wrist 6
-// ie for right hand it might be reversed 6 -> 0 
+// ie for right hand indexes 0-4 are reverse, 5 and 6 stay the same
 // THIS IS ACTUALLY SETUP FOR SELECT LINES
-const int HAPTIC_PINS[NUM_HAPTICS] = {0, 1, 2, 3, 4, 5, 6};
+const int HAPTIC_PINS[NUM_HAPTICS] = {2, 1, 0, 6, 5, 4, 3};
 // TCA MUX ADDRESS
 #define TCAADDR 0x77
 // INSTANTIATE HAPTIC DRIVER OBJECT
