@@ -38,8 +38,8 @@ int gBaseline[NUM_VELOSTAT];
 const int ADC_BITS = 12;
 
 // FLEX SETUP VARIABLES
-#define FLEX_POINTER 15
-#define FLEX_RING 23
+// #define FLEX_POINTER 15
+// #define FLEX_RING 23
 #define FLEX_WRIST 22
 
 
@@ -396,6 +396,20 @@ void checkFingerPress() {
   }
 
   delay(50); // optional debounce/stability
+}
+
+/**
+ * Function to help guide finger presses in learning mode. 
+ * Uses haptics to signal each finger and where it should press. 
+ */
+void guideFingerPress() {
+    // Step 1: Get the set of finger instructions that need to happen
+
+    // Step 2: Apply it using haptics 
+
+    // Step 3: detect a finger press, when that happens send back to Raspi for 
+    // confirmation
+
 }
 
 
