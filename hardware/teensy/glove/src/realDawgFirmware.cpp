@@ -364,11 +364,16 @@ void setup() {
 
     // Step 1.5: Send confirmation byte to RasPi of which hand this is -
     // Python will use this to dynamically assign the ports and retain for rest of time
-    while (Serial.availableForWrite()) {
+    while (!Serial.availableForWrite()) {
       delay(10); // small delay to ensure proper transmission
-      Serial.write(static_cast<uint8_t>(TEENSY_HAND));
     }
 
+    Serial.paritytype()
+
+    if (Serial.availableForWrite())
+      Serial.write(static_cast<uint8_t>(TEENSY_HAND));
+
+    delay(10);
     // BOOTUP SOUND
     Serial.write(static_cast<uint8_t>(VoiceCommands::WELCOME_MUSIC));
 
