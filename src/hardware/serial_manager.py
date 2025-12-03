@@ -178,6 +178,8 @@ Glove connection / hand-detection process
         * Updates self.hand, calls start(), and returns self. 
 """
 
+
+# MAX OF 8? TRIES OF CONNECTING
 class LeftGloveSerialManager(BaseSerialManager):
     """
     Manages serial communication with left glove controller for haptic feedback.
@@ -505,9 +507,8 @@ class RightGloveSerialManager(LeftGloveSerialManager):
         super().start()  # Call parent implementation
 
 
+
 # Legacy functions for backward compatibility
-
-
 
 def read_from_teensy(port, source_hand):
     """Run in its own thread to read from a single teensy"""
@@ -521,6 +522,59 @@ def read_from_teensy(port, source_hand):
             # handle_line(line)
         except Exception as e:
             print(f"Error on {source_hand}-hand port: {e}")
+
+
+
+class AudioProtocol:
+    
+    def __init__(self, output = 'Teensy MIDI/Audio'):
+        self.out = mido.open_output(output)
+
+    def note_on(self, note: int, velocity: int = 100):
+        #if (note < 60): return #values less than 60 are reserved for voice commands
+        if note > 127:
+            raise ValueError(f"Invalid MIDI note value: {note}. MIDI notes must be 0-127.")
+        velocity = 127 if velocity > 127 else velocity
+        velocity = 0 if velocity < 0 else velocity
+        self.out.send(mido.Message('note_on', note=note, velocity=velocity, channel=0))
+        #print("I turned on note " + str(note) + " with velocity " +  str(velocity))
+    
+    def note_off(self, note: int, velocity: int = 0):
+        #if (note < 60): return #values less than 60 are reserved for voice commands
+        if note > 127:
+            raise ValueError(f"Invalid MIDI note value: {note}. MIDI notes must be 0-127.")
+        self.out.send(mido.Message('note_off', note=note, velocity=velocity, channel=0))
+    
+    def play_voice_command(self, command: VoiceCommand):
+        """
+        Play a voice command by sending it as a MIDI note.
+        
+        Voice commands use MIDI note values 0-59 (values 60+ are reserved
+        for regular piano notes). The command is sent as a note_on followed
+        immediately by note_off to trigger the voice playback on the Teensy.
+        """
+        note_value = command.value
+        
+        # MIDI note values are strictly 0-127
+        if note_value > 127:
+            raise ValueError(
+                f"VoiceCommand {command.name} has value {note_value} which exceeds "
+                f"MIDI note range (0-127). Cannot send via standard MIDI protocol."
+            )
+        
+        # Voice commands should be in range 0-59 (values 60+ are for regular notes)
+        if note_value >= 60:
+            import logging
+            logging.warning(
+                f"VoiceCommand {command.name} has value {note_value} which is in "
+                f"the regular MIDI note range (60+). Voice commands should be 0-59."
+            )
+        
+        self.out.send(mido.Message('note_on', note=note_value, velocity=127, channel=0))
+        self.out.send(mido.Message('note_off', note=note_value, velocity=0, channel=0))
+
+
+
 
 def main():
     # example usage
