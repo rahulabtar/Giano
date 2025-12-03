@@ -5,6 +5,9 @@ Core constants used throughout the Giano system.
 import os
 from dataclasses import dataclass
 
+# MIDI note names
+NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+
 # Physical constants
 PI = 3.1415926
 IN_TO_METERS = 0.0254
@@ -39,6 +42,9 @@ VELOCITY_SCALE = 127
 # Communication protocols
 SERIAL_BAUD_RATE = 115200
 DEFAULT_CAMERA_ID = 0
+LEFT_PORT = "/dev/ttyACM0"
+RIGHT_PORT = "/dev/ttyACM1"
+
 
 # Get the project root directory (two levels up from this file)
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

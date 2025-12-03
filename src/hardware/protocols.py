@@ -10,25 +10,49 @@ import struct
 from enum import Enum, IntEnum
 from typing import Optional, Tuple, Dict, Any
 import numpy as np
+import mido
+
+class Hand(IntEnum):
+    AUDIO = 253
+    LEFT = 254
+    RIGHT = 255
+
+class SensorValue(IntEnum):
+    Pressed=0
+    Released=1
+
+
+# TODO: make sure I need to have this
+class SensorNumberLeft(IntEnum):
+    Thumb=0
+    Index=1
+    Middle=2
+    Ring=3
+    Pinky=4
+
+
+class PlayingMode(Enum):
+    LEARNING_MODE = 0
+    FREEPLAY_MODE = 1
 
 """The finger instruction set will be sent back to Python
 from the Teensy once the velostat has detected a finger press.
 Python will forward this information to the audio Teensy to play the note.
 """
 
-class FingerInstructionSet_learningMode:
+
+class LearningModeGloveInstructionSet:
     fingerNumber: np.uint8
     midiNote: np.uint8  
     commandCode: np.uint8
     distanceToNote: np.float32
 
-class FingerInstructionSet_freeplayMode:
-    fingerNumber: np.uint8
-    midiNote: np.uint8  
+# Matched to firmware
+class FreeplayModeGloveInstructionSet:
+    hand: Hand
+    sensorValue: SensorValue
+    sensorNumber: SensorNumberLeft
 
-class PlayMode(Enum):
-    FREEPLAY_MODE = 0
-    LEARNING_MODE = 1
 
 """The octave instruction set will be sent back to Python
 from the Teensy once the hand position has been detected.
@@ -52,15 +76,36 @@ class ActionCode(IntEnum):
     ERROR = 5                # Error state
 
 
-# TODO: Add MIDI control codes
-class MIDIControl(IntEnum):
-    """MIDI command codes."""
-    NOTE_OFF = 0x80
-    NOTE_ON = 0x90
-    CONTROL_CHANGE = 0xB0
 
 
-class GloveProtocol:
+
+
+
+class GloveProtocolFreeplayMode:
+    """Protocol handler for glove controller communication."""
+    
+    # 3-byte message: [fingerInstructionSet]
+    PACK_FORMAT = 'BBB'  # 3 unsigned bytes
+    MESSAGE_SIZE = 3
+    
+
+    @staticmethod
+    def pack(instruction_set: FreeplayModeGloveInstructionSet) -> bytes:
+        pass
+    
+    @staticmethod
+    def unpack(message: bytes) -> FreeplayModeGloveInstructionSet:
+        message_tuple = struct.unpack(GloveProtocolFreeplayMode.PACK_FORMAT, message)
+        
+        return FreeplayModeGloveInstructionSet(
+            hand=message_tuple[0],
+            sensorValue=message_tuple[1],
+            sensorNumber=message_tuple[2]
+        )
+
+
+
+class GloveProtocolLearningMode:
     """Protocol handler for glove controller communication."""
     
     # 3-byte message: [fingerInstructionSet]
@@ -130,85 +175,29 @@ class GloveProtocol:
         return 0 <= motor_id <= 4 and 0 <= midi_note <= 127 and 0 <= action <= 5
 
 
-class AudioProtocol:
-    """Protocol handler for audio board communication (MIDI-style)."""
-    
-    # 3-byte message: [command, note, velocity]
-    PACK_FORMAT = 'BBB'
-    MESSAGE_SIZE = 3
-    
-    @staticmethod
-    def pack_note_on(note: int, velocity: int = 100) -> bytes:
-        """
-        Pack MIDI note-on message.
-        
-        Args:
-            note: MIDI note number (0-127)
-            velocity: Velocity/volume (0-127)
-            
-        Returns:
-            3-byte binary message
-        """
-        return struct.pack(
-            AudioProtocol.PACK_FORMAT,
-            MIDIControl.NOTE_ON,
-            note,
-            velocity
-        )
-    
-    @staticmethod
-    def pack_note_off(note: int, velocity: int = 0) -> bytes:
-        """
-        Pack MIDI note-off message.
-        
-        Args:
-            note: MIDI note number (0-127)
-            velocity: Release velocity (usually 0)
-            
-        Returns:
-            3-byte binary message
-        """
-        return struct.pack(
-            AudioProtocol.PACK_FORMAT,
-            MIDIControl.NOTE_OFF,
-            note,
-            velocity
-        )
-    
-    @staticmethod
-    def unpack(message: bytes) -> Optional[Tuple[int, int, int]]:
-        """
-        Unpack audio board message.
-        
-        Args:
-            message: 3-byte binary message
-            
-        Returns:
-            Tuple of (command, note, velocity) or None if invalid
-        """
-        if len(message) != AudioProtocol.MESSAGE_SIZE:
-            return None
-        
-        try:
-            command, note, velocity = struct.unpack(AudioProtocol.PACK_FORMAT, message)
-            return (command, note, velocity)
-        except struct.error:
-            return None
+# ENUM FOR VOICE COMMANDS COMING FROM THE GLOVE CONTROLLER AND GOING TO THE AUDIO TEENSY
+class VoiceCommand(IntEnum):
+    #music played on boot
+    WELCOME_MUSIC = 16
+
+    #text played on boot
+    WELCOME_TEXT = 17
+
+    # missing
+    MODE_SELECT_BUTTONS = 18
+    SELECT_SONG = 19
+    # confirmation of freeplay mode selection
+    FREEPLAY_MODE_CONFIRM = 20
+    LEARNING_MODE_CONFIRM = 21
+    CALIB_VELO_NO_PRESS = 22
+    CALIB_SOFT_PRESS = 23
+    CALIB_HARD_PRESS = 24
+    HOW_TO_CHANGE_MODE = 25
+    HOW_TO_RESET_SONG = 26
+    FLUSH = 27
+    DEBUG = 28
+    INVALID = 29
 
 
-def map_mediapipe_to_motor(mediapipe_finger_id: int) -> int:
-    """
-    Map MediaPipe finger ID to motor ID.
-    
-    MediaPipe finger IDs: 4=thumb, 8=index, 12=middle, 16=ring, 20=pinky
-    Motor IDs: 0=thumb, 1=index, 2=middle, 3=ring, 4=pinky
-    
-    Args:
-        mediapipe_finger_id: MediaPipe landmark ID
-        
-    Returns:
-        Motor ID (0-4)
-    """
-    mapping = {4: 0, 8: 1, 12: 2, 16: 3, 20: 4}
-    return mapping.get(mediapipe_finger_id, -1)
+
 

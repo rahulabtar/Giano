@@ -1,6 +1,11 @@
 """Hardware communication modules for glove controller and audio board."""
 
-from .serial_manager import SerialManager
+from .serial_manager import (
+    SerialManager,
+    GloveSerialManager,
+    AudioSerialManager,
+    BaseSerialManager
+)
 from .protocols import (
     GloveProtocol,
     AudioProtocol,
@@ -11,6 +16,9 @@ from .protocols import (
 
 __all__ = [
     'SerialManager',
+    'GloveSerialManager',
+    'AudioSerialManager',
+    'BaseSerialManager',
     'GloveProtocol',
     'AudioProtocol',
     'ActionCode',

@@ -10,8 +10,14 @@ FREEPLAY MODE Firmware
 
 */
 
-// HAND RELATED VARIABLE
-#define HAND "L"
+#include <Arduino.h>
+#include <types.h>
+
+// HAND RELATED ENUM
+
+
+// THIS WILL BE FOR LEFT HAND
+#define TEENSY_HAND Hand::Left
 
 // BUTTON / MODE RELATED VARIABLES
 const int BUTTON_MODE = 2;
@@ -19,7 +25,7 @@ const int BUTTON_SONG = 3;
 
 
 
-bool freeplayMode = true; // THIS IS JUST FOR TESTING THE INTERRUPT OF THIS VERSION. IN THE REAL FIRMWARE WE WILL JUST WIND UP SWITCHING MODES NOT EXITING
+bool gFreeplayMode = true; // THIS IS JUST FOR TESTING THE INTERRUPT OF THIS VERSION. IN THE REAL FIRMWARE WE WILL JUST WIND UP SWITCHING MODES NOT EXITING
 
 
 // VELOSTAT VARIABLES
@@ -30,11 +36,11 @@ const int THRESHOLD = 45; // threshold for pressed/unpressed
 const int ADC_BITS = 12;
 
 // to collect baseline readings 
-int baseline[NUM_VELOSTAT];
+int gBaseline[NUM_VELOSTAT];
 
-bool pressed = false;
+bool gPressed = false;
 
-bool sensorState[NUM_VELOSTAT] = {false, false};
+bool gSensorState[NUM_VELOSTAT] = {false, false};
 
 // ADD HAPTICS SHIT HERE FOR LEARNING MODE
 
@@ -44,6 +50,8 @@ void setup() {
 
   delay(3000);
 
+  // send one confirmation byte to the RasPi 
+  Serial.write(TEENSY_HAND);
 
   // BUTTON SETUP: INTEGRATE THIS WITH VOICE COMMANDS PLS AND THANKS
   pinMode(BUTTON_MODE, INPUT_PULLUP);
@@ -64,28 +72,28 @@ void setup() {
       delay(5);
     }
 
-    baseline[i] = sum / SAMPLERATE; 
+    gBaseline[i] = sum / SAMPLERATE; 
 
     Serial.print("Baseline for sensor");
     Serial.print(i);
     Serial.print(" = ");
-    Serial.println(baseline[i]);
+    Serial.println(gBaseline[i]);
   }
 }
 
 void loop() {
   // put your main code here, to run repeatedly:
-  if(!freeplayMode) {
+  if(!gFreeplayMode) {
     // this is just a debug statement, should NEVER reach this if setup is properly communicated.
     Serial.println("NOT IN FREEPLAY MODE SOMETHING IS WRONG for this test");
   }
 
   if(digitalRead(BUTTON_MODE) == LOW) {
     Serial.println("SWITCHING MODE");
-    if(freeplayMode) {
-      freeplayMode = false; // if true set to false
-    } else if (!freeplayMode) {
-      freeplayMode = true; // if false set it to true
+    if(gFreeplayMode) {
+      gFreeplayMode = false; // if true set to false
+    } else if (!gFreeplayMode) {
+      gFreeplayMode = true; // if false set it to true
     }
     delay(200); // debounce time for button logic
   }
@@ -95,42 +103,169 @@ void loop() {
 }
 
 
-
+// TODO: Write equation for determining velostat resistance
 void checkFingerPress() {
-  for (int i = 0; i < NUM_VELOSTAT; i++) {
+  for (unsigned int i = 0; i < NUM_VELOSTAT; i++) {
     int raw = analogRead(VELOSTAT_PINS[i]);
-    bool currentlyPressed = raw >= (baseline[i] + THRESHOLD);
+    
+    bool currentlyPressed = raw >= (gBaseline[i] + THRESHOLD);
 
     // transition: unpressed -> pressed
-    if (currentlyPressed && !sensorState[i]) {
+    if (currentlyPressed && !gSensorState[i]) {
       Serial1.print("Sensor ");
       Serial1.println(i);     // send "note on" to receiver
+    
       // SENDS TO RASPI
-      Serial.print(HAND);
-      Serial.print("Sensor ");
-      Serial.println(i);      // debug
+      Serial.write((u_int8_t)TEENSY_HAND);
+      Serial.write(SensorValue::Pressed);
+      Serial.write(i);
 
-      sensorState[i] = true;  // remember it's pressed
+      gSensorState[i] = true;  // remember it's pressed
     } 
     // transition: pressed -> released
-    else if (!currentlyPressed && sensorState[i]) {
+    else if (!currentlyPressed && gSensorState[i]) {
       Serial1.print("SensorReleased ");
       Serial1.println(i);     // send "note off" to receiver
 
       // SENDING IT TO RASPI
-      Serial.print(HAND);
-      Serial.print("SensorReleased ");
-      Serial.println(i);     // send "note off" to receiver
+      Serial.write((u_int8_t)TEENSY_HAND);
+      Serial.write(SensorValue::Released);
+      Serial.write(i);     // send "note off" to receiver
 
-      sensorState[i] = false; // update state
+      gSensorState[i] = false; // update state
     }
+
     // if pressed and already marked as pressed, do nothing
   }
 
   delay(50); // optional debounce/stability
 }
 
+void calibrate(unsigned int SAMPLE_COUNT = 200, unsigned int SAMPLE_PERIOD = 50) {
 
+  int open_means[NUM_VELOSTAT];
+  int open_stdevs[NUM_VELOSTAT];
+  int soft_means[NUM_VELOSTAT];
+  int soft_stdevs[NUM_VELOSTAT];
+  int hard_means[NUM_VELOSTAT];
+  int hard_stdevs[NUM_VELOSTAT];
+
+  long sum;
+  long sumSq;
+  float mean; 
+  float stdev; 
+
+  Serial.println(" Velostat Calibration for Open ...");
+  delay(1000); 
+  Serial.println("Please make sure all fingers are open (no pressure) Scrunch hands in and out");
+  delay(2000);
+  Serial.println("Starting now...");
+
+  for (int finger = 0; finger < NUM_VELOSTAT; finger++) {
+
+    Serial.print("\nCalibrating finger ");
+    Serial.println(finger);
+
+    sum = 0;
+    sumSq = 0;
+
+    for (int i = 0; i < SAMPLE_COUNT; i++) {
+      int reading = analogRead(VELOSTAT_PINS[finger]);
+
+      sum += reading;
+      sumSq += (long)reading * (long)reading;
+
+      delay(SAMPLE_PERIOD);
+    }
+
+    mean = (float)sum / SAMPLE_COUNT;
+    stdev = sqrt(((float)sumSq / SAMPLE_COUNT) - (mean * mean));
+
+    open_means[finger] = mean; 
+    open_stdevs[finger] = stdev;
+  }
+
+  Serial.println(" Velostat Calibration for closed (light press)...");
+  delay(1000); 
+  Serial.println("Please hold all fingertips against surface lightly, like you are petting a cat :D");
+  delay(2000);
+  Serial.println("Starting now...");
+
+  for (int finger = 0; finger < NUM_VELOSTAT; finger++) {
+
+    Serial.print("\nCalibrating finger ");
+    Serial.println(finger);
+
+    sum = 0;
+    sumSq = 0;
+
+    for (int i = 0; i < SAMPLE_COUNT; i++) {
+      int reading = analogRead(VELOSTAT_PINS[finger]);
+
+      sum += reading;
+      sumSq += (long)reading * (long)reading;
+
+      delay(SAMPLE_PERIOD);
+    }
+
+    mean = (float)sum / SAMPLE_COUNT;
+    stdev = sqrt(((float)sumSq / SAMPLE_COUNT) - (mean * mean));
+
+    soft_means[finger] = mean; 
+    soft_stdevs[finger] = stdev;
+  }
+
+  Serial.println(" Velostat Calibration for closed (hard press)...");
+  delay(1000);
+  Serial.println("Please hold all fingertips against surface hard :D");
+  delay(2000);
+  Serial.println("Starting now...");
+
+  for (int finger = 0; finger < NUM_VELOSTAT; finger++) {
+
+    Serial.print("\nCalibrating finger ");
+    Serial.println(finger);
+
+    sum = 0;
+    sumSq = 0;
+
+    for (int i = 0; i < SAMPLE_COUNT; i++) {
+      int reading = analogRead(VELOSTAT_PINS[finger]);
+
+      sum += reading;
+      sumSq += (long)reading * (long)reading;
+
+      delay(SAMPLE_PERIOD);
+    }
+
+    mean = (float)sum / SAMPLE_COUNT;
+    stdev = sqrt(((float)sumSq / SAMPLE_COUNT) - (mean * mean));
+
+    hard_means[finger] = mean; 
+    hard_stdevs[finger] = stdev;
+  }
+
+  // implementing calibration algorithm now 
+  int maxPress[NUM_VELOSTAT];
+  for (int finger = 0; finger < NUM_VELOSTAT; finger++){
+  gBaseline[finger] = open_means[finger] + 2 * open_stdevs[finger];
+  maxPress[finger] = hard_means[finger] + hard_stdevs[finger];
+
+  if (gBaseline[finger] >= maxPress[finger]) 
+  {
+    Serial.print("Calibration failed for finger ");
+    Serial.println(finger);
+    Serial.println("Please redo calibration with better finger presses");
+  } else {
+    Serial.print("Calibration successful for finger ");
+    Serial.println(finger);
+    Serial.print("Baseline: ");
+    Serial.println(gBaseline[finger]);
+    Serial.print("Max Press: ");
+    Serial.println(maxPress[finger]);
+  }
+}
+}
 
 
 

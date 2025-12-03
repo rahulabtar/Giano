@@ -1,4 +1,4 @@
-#include <Arduino.h>
+/*#include <Arduino.h>
 #include <usbMIDI.h>
 #include <Audio.h>
 #include <Wire.h>
@@ -80,26 +80,41 @@ void setup() {
 
 // Audio Hat/ FM Helper functions
 
+
+
+
+
+
+/*
+
+
 /**
  * Convert MIDI note number to frequency in Hz.
  */
+/*
 float midiNoteToFreq(uint8_t note) {
   return 440.0f * powf(2.0f, (note - 69) / 12.0f);
 }
 
+
 /**
  * Convert MIDI velocity (0-127) to amplitude (0.0 - 1.0) using logarithmic scaling.
  */
+
+ /*
 float velocityToAmp(byte velocity, unsigned int scaling_factor){
   if (scaling_factor > 10) scaling_factor = 10;
   return logf(1.0f + scaling_factor * velocity / 127.0f) /
          logf(1.0f + scaling_factor);
 }
+*/
+
 
 /**
  * Handles note ON command
  * parameters: MIDI channel, note number, velocity
  */
+/*
 void noteOn(byte channel, byte note, byte velocity) {
   Serial.printf("Note ON: Ch %d, Note %d, Vel %d\n", channel, note, velocity);
   float freq = midiNoteToFreq(note);
@@ -121,11 +136,13 @@ void noteOn(byte channel, byte note, byte velocity) {
   env2.noteOn();
   env3.noteOn();
 }
-
+*/
+/*
 /**
  * Handles note OFF command
  * parameters: MIDI channel, note number, velocity
  */
+/*
 void noteOff(byte channel, byte note, byte velocity){
   Serial.printf("Note OFF: Ch %d, Note %d\n", channel, note);
   env.noteOff(); 
@@ -134,7 +151,7 @@ void noteOff(byte channel, byte note, byte velocity){
   env3.noteOff();
 }
 
-
+/*
 // main loop: reads in MIDI note data serially from raspi and calls noteOn/noteOff functions
 void loop() {
     if(usbMIDI.read()) {
@@ -143,12 +160,13 @@ void loop() {
     }
     Serial.print("ERRROR: NO MIDI RECEIVED"); // debug statement
 }
-
+/*
 
 /**
   Processing Function: breaks MIDI data into pitch, velocity, and note ON vs. note OFF 
   Note ON/OFF is key, and will trigger the audio output stop/start reactions.
 */
+/*
 void processMIDIData(){
 
   // gives us channel of message received - unsure if we need this
@@ -161,8 +179,8 @@ void processMIDIData(){
   int velocity = usbMIDI.getData2();
   // gives us port/cable data byte, helpful to control MIDI routing
   int cable = usbMIDI.getCable();
-
-
+*/
+/*
   // switch case regarding if the MIDI message is ON or OFF
   // NOTE: there are other cases we can play around with if needed!
   switch(onStatus) {
@@ -189,7 +207,7 @@ void processMIDIData(){
 }
 
 
-
+*/
 
 
 
