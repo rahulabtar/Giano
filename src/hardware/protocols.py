@@ -10,7 +10,7 @@ import struct
 from enum import Enum, IntEnum
 from typing import Optional, Tuple, Dict, Any
 import numpy as np
-
+import mido
 
 class Hand(IntEnum):
     LEFT = 0
@@ -175,71 +175,36 @@ class GloveProtocolLearningMode:
         # Add validation logic for responses (e.g., ACK, error codes)
         return 0 <= motor_id <= 4 and 0 <= midi_note <= 127 and 0 <= action <= 5
 
+class voice_command(IntEnum):
+    "BOOTED" = 0
+    "WELCOME" = 1
+    "SELSONG" = 2
+    "LEARNMOD" = 3
+    "HOWRS" = 4
+    "HOWMOD" = 5   
+    "FREEMOD" = 6
+    "DEBUG" = 7
+    "CONFSONG" = 8
+    "CONFIRM" = 9
 
 class AudioProtocol:
-    """Protocol handler for audio board communication (MIDI-style)."""
     
-    # 3-byte message: [command, note, velocity]
-    PACK_FORMAT = 'BBB'
-    MESSAGE_SIZE = 3
+    def __init__(self, output = 'Teensy MIDI:Teensy MIDI MIDI 1 24:0'):
+        self.out = mido.open_output(output)
+
+    def note_on(self, note: int, velocity: int = 100):
+        if (note < 60): return #values less than 60 are reserved for voice commands
+        velocity = 127 if velocity > 127 else velocity
+        velocity = 0 if velocity < 0 else velocity
+        self.out.send(mido.Message('note_on', note=note, velocity=velocity, channel=0))
     
-    @staticmethod
-    def pack_note_on(note: int, velocity: int = 100) -> bytes:
-        """
-        Pack MIDI note-on message.
-        
-        Args:
-            note: MIDI note number (0-127)
-            velocity: Velocity/volume (0-127)
-            
-        Returns:
-            3-byte binary message
-        """
-        return struct.pack(
-            AudioProtocol.PACK_FORMAT,
-            MIDIControl.NOTE_ON,
-            note,
-            velocity
-        )
+    def note_off(self, note: int, velocity: int = 0):
+        if (note < 60): return #values less than 60 are reserved for voice commands
+        self.out.send(mido.Message('note_off', note=note, velocity=velocity, channel=0))
     
-    @staticmethod
-    def pack_note_off(note: int, velocity: int = 0) -> bytes:
-        """
-        Pack MIDI note-off message.
-        
-        Args:
-            note: MIDI note number (0-127)
-            velocity: Release velocity (usually 0)
-            
-        Returns:
-            3-byte binary message
-        """
-        return struct.pack(
-            AudioProtocol.PACK_FORMAT,
-            MIDIControl.NOTE_OFF,
-            note,
-            velocity
-        )
-    
-    @staticmethod
-    def unpack(message: bytes) -> Optional[Tuple[int, int, int]]:
-        """
-        Unpack audio board message.
-        
-        Args:
-            message: 3-byte binary message
-            
-        Returns:
-            Tuple of (command, note, velocity) or None if invalid
-        """
-        if len(message) != AudioProtocol.MESSAGE_SIZE:
-            return None
-        
-        try:
-            command, note, velocity = struct.unpack(AudioProtocol.PACK_FORMAT, message)
-            return (command, note, velocity)
-        except struct.error:
-            return None
+    def play_voice_command(self, command: voice_command):
+        self.out.send(mido.Message('note_on', note=command.value, velocity=127, channel=0))
+        self.out.send(mido.Message('note_off', note=command.value, velocity=0, channel=0))
 
 
 def map_mediapipe_to_motor(mediapipe_finger_id: int) -> int:
