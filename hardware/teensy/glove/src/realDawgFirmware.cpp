@@ -11,20 +11,20 @@
 // Setting Type for the hand: *must manually changed before uploading to each hand*
 #define TEENSY_HAND Hand::Left
 
-
 // Set button pins for left glove - CHECK THESE PLEASEEEE!!!!
+// LEFTMOST BUTTON CONTROLS SONG, RIGHT CONTROLS MODE
 const int BUTTON_MODE = 10; 
 const int BUTTON_SONG = 11; 
 
 // Global variable for setting mode - default to freeplay mode
 bool gFreeplayMode = true;
 
-
 // VELOSTAT SETUP VARIABLES
 // number of velostat sensors
 const int NUM_VELOSTAT = 5; 
 // array of size of # of velostat sensors, sets their pins - ADD THIS
-// thumb index 0, pinky at 4
+// thumb index 0, pinky at 4. ON LEFT GLOVE: PINKY IS LEFTMOST CONNECTOR
+// ON RIGHT GLOVE: THUMB IS LEFTMOST CONNECTOR.
 const int VELOSTAT_PINS[NUM_VELOSTAT] = {A0, A1, A2, A3, A4}; 
 // set default state of pressed vs unpressed to be unpressed
 bool gPressed = false; 
@@ -38,8 +38,6 @@ int gBaseline[NUM_VELOSTAT];
 const int ADC_BITS = 12;
 
 // FLEX SETUP VARIABLES
-// #define FLEX_POINTER 15
-// #define FLEX_RING 23
 #define FLEX_WRIST 22
 
 
@@ -66,10 +64,10 @@ void setup {
     delay(1000); // just a buffer delay
 
     // Step 1.5: Send confirmation byte to RasPi of which hand this is
-    Serial.write(TEENSY_HAND);
+    Serial.write(TEENSY_HAND, sizeof(TEENSY_HAND));
 
     // BOOTUP MESSAGE
-    Serial.print("BOOTUP")
+    Serial.write(VoiceCommands::BOOTED, sizeof(VoiceCommands::BOOTED));
 
     // Step 2: Initialize all necessary sensors/button components for setup logic
     // we only want buttons to work if on left hand
@@ -134,9 +132,7 @@ void setup {
             if(TEENSY_HAND == Hand::Left) {
 
                 // Step 5: SONG SELECTION
-                Serial.print("SELECT SONG MESSAGE")
-                
-
+                Serial.write(VoiceCommands:SELSONG, sizeof(SELSONG))
 
                 // detect and wait to see how many times button was pressed, send that 
                 // number back to the python unit - only for left hand
