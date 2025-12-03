@@ -3,7 +3,8 @@
 #include <Arduino.h>
 
 enum class PlayingMode: u_int8_t {
-
+  LEARNING_MODE = 0,
+  FREEPLAY_MODE = 1,
 };
 
 enum class VocalCommandCodes: u_int8_t {
