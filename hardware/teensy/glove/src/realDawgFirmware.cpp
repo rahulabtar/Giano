@@ -52,6 +52,9 @@ const int HAPTIC_PINS[NUM_HAPTICS] = {0, 1, 2, 3, 4, 5, 6};
 Adafruit_DRV2605 drv;
 
 
+// LEARNING MODE SETUP VARIABLES AND DATA SETS
+
+
 /**
  * SETUP FUNCTION TO RUN AT STARTUP AND AID IN SELECTING SONG/ MODE
  */
@@ -210,6 +213,8 @@ void calibrateVelostat(unsigned int SAMPLE_COUNT = 200, unsigned int SAMPLE_PERI
   float stdev; 
 
   Serial.write(VoiceCommands::CALIB_VELO_NO_PRESS, sizeof(VoiceCommands::CALIB_VELO_NO_PRESS));
+  Serial.write(VoiceCommands::CALIBRATING, sizeof(VoiceCommands::CALIBRATING));
+  Serial.write(VoiceCommands::CALIBRATE_SINE_WAVE, sizeof(VoiceCommands::CALIBRATE_SINE_WAVE));
   //Serial.println(" Velostat Calibration for Open ...");
   //delay(1000); 
   //Serial.println("Please make sure all fingers are open (no pressure) Scrunch hands in and out");
@@ -242,6 +247,8 @@ void calibrateVelostat(unsigned int SAMPLE_COUNT = 200, unsigned int SAMPLE_PERI
 
   delay(200);
   Serial.write(VoiceCommands::CALIB_SOFT_PRESS, sizeof(VoiceCommands::CALIB_SOFT_PRESS));
+  Serial.write(VoiceCommands::CALIBRATING, sizeof(VoiceCommands::CALIBRATING));
+  Serial.write(VoiceCommands::CALIBRATE_SINE_WAVE, sizeof(VoiceCommands::CALIBRATE_SINE_WAVE));
   //Serial.println(" Velostat Calibration for closed (light press)...");
   //delay(1000); 
   //Serial.println("Please hold all fingertips against surface lightly, like you are petting a cat :D");
@@ -273,6 +280,8 @@ void calibrateVelostat(unsigned int SAMPLE_COUNT = 200, unsigned int SAMPLE_PERI
   }
 
   Serial.write(VoiceCommands::CALIB_HARD_PRESS, sizeof(VoiceCommands::CALIB_HARD_PRESS));
+  Serial.write(VoiceCommands::CALIBRATING, sizeof(VoiceCommands::CALIBRATING));
+  Serial.write(VoiceCommands::CALIBRATE_SINE_WAVE, sizeof(VoiceCommands::CALIBRATE_SINE_WAVE));
   //Serial.println(" Velostat Calibration for closed (hard press)...");
   //delay(1000);
   //Serial.println("Please hold all fingertips against surface hard :D");
@@ -309,20 +318,19 @@ void calibrateVelostat(unsigned int SAMPLE_COUNT = 200, unsigned int SAMPLE_PERI
   gBaseline[finger] = open_means[finger] + 2 * open_stdevs[finger];
   maxPress[finger] = hard_means[finger] + hard_stdevs[finger];
 
-  //TODO:  HOW DO WE EVEN ADDRESS THIS
-  // if (gBaseline[finger] >= maxPress[finger]) 
-  // {
-  //   Serial.print("Calibration failed for finger ");
-  //   Serial.println(finger);
-  //   Serial.println("Please redo calibration with better finger presses");
-  // } else {
-  //   Serial.print("Calibration successful for finger ");
-  //   Serial.println(finger);
-  //   Serial.print("Baseline: ");
-  //   Serial.println(gBaseline[finger]);
-  //   Serial.print("Max Press: ");
-  //   Serial.println(maxPress[finger]);
-  // }
+  TODO:  HOW DO WE EVEN ADDRESS THIS
+  if (gBaseline[finger] >= maxPress[finger]) 
+  {
+    Serial.write(VoiceCommands::CALIBRATION_FAILED, sizeof(VoiceCommands::CALIBRATION_FAILED));
+    calibrateVelostat();
+  } else {
+    Serial.write(VoiceCommands::CALIBRATION_SUCCESS, sizeof(VoiceCommands::CALIBRATION_SUCCESS));
+    // Serial.println(finger);
+    // Serial.print("Baseline: ");
+    // Serial.println(gBaseline[finger]);
+    // Serial.print("Max Press: ");
+    // Serial.println(maxPress[finger]);
+  }
 }
 }
 
