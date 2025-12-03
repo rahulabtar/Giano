@@ -11,20 +11,20 @@
 // Setting Type for the hand: *must manually changed before uploading to each hand*
 #define TEENSY_HAND Hand::Left
 
-
 // Set button pins for left glove - CHECK THESE PLEASEEEE!!!!
+// LEFTMOST BUTTON CONTROLS SONG, RIGHT CONTROLS MODE
 const int BUTTON_MODE = 10; 
 const int BUTTON_SONG = 11; 
 
 // Global variable for setting mode - default to freeplay mode
 bool gFreeplayMode = true;
 
-
 // VELOSTAT SETUP VARIABLES
 // number of velostat sensors
 const int NUM_VELOSTAT = 5; 
 // array of size of # of velostat sensors, sets their pins - ADD THIS
-// thumb index 0, pinky at 4
+// thumb index 0, pinky at 4. ON LEFT GLOVE: PINKY IS LEFTMOST CONNECTOR
+// ON RIGHT GLOVE: THUMB IS LEFTMOST CONNECTOR.
 const int VELOSTAT_PINS[NUM_VELOSTAT] = {A0, A1, A2, A3, A4}; 
 // set default state of pressed vs unpressed to be unpressed
 bool gPressed = false; 
@@ -38,8 +38,6 @@ int gBaseline[NUM_VELOSTAT];
 const int ADC_BITS = 12;
 
 // FLEX SETUP VARIABLES
-// #define FLEX_POINTER 15
-// #define FLEX_RING 23
 #define FLEX_WRIST 22
 
 
@@ -66,7 +64,10 @@ void setup {
     delay(1000); // just a buffer delay
 
     // Step 1.5: Send confirmation byte to RasPi of which hand this is
-    Serial.write(TEENSY_HAND);
+    Serial.write(TEENSY_HAND, sizeof(TEENSY_HAND));
+
+    // BOOTUP MESSAGE
+    Serial.write(VoiceCommands::BOOTED, sizeof(VoiceCommands::BOOTED));
 
     // Step 2: Initialize all necessary sensors/button components for setup logic
     // we only want buttons to work if on left hand
@@ -77,15 +78,22 @@ void setup {
     analogReadResolution(ADC_BITS);
     analogReadAveraging(8); // mild data smoothing
 
-    // Step 3: Setup, mode, and song selection logic! 
-    // send notif to PYTHON to play the initial setup message of 
 
-    // "welcome to GIANO, please select the mode by pressing the leftmost button. once 
-    // for freeplay, twice for learning mode."
-    
-    // wait adequate time for user to press button, detect how many times it was pressed 
-    // in that window of time, and set mode accordingly
     if(TEENSY_HAND == Hand::Left) {
+
+        // Step 3: Setup, mode, and song selection logic! 
+        // send notif to PYTHON to play the initial setup message of 
+
+        // "welcome to GIANO, please select the mode by pressing the leftmost button. once 
+        // for freeplay, twice for learning mode."
+
+        Serial.print("PLAY WELCOME TO GIANO + MODE SELECTION GUIDANCE")
+
+        // wait adequate time for user to press button, detect how many times it was pressed 
+        // in that window of time, and set mode accordingly
+
+        delay(200);
+
         int modePressCount = buttonPressCount(5000, BUTTON_MODE); // 5 second window to press button
         if(modePressCount == 1) {
             gFreeplayMode = true; 
@@ -94,9 +102,17 @@ void setup {
         }
         // write the mode selected back to python for confirmation
         Serial.print(gFreeplayMode);
+
     }
 
-    // Step 4: Call song selection calibration function to calibrate all sensors BASED ON MODE
+    // IF this is the right hand, we need to receive and set the mode from the Python brain
+    if(TEENSY_HAND == Hand::Right) {
+        // read from the serial input and set the mode
+
+        // PLACEHOLDER
+    }
+
+    // Step 4: Call calibration function to calibrate all sensors BASED ON MODE
     // if freeplay mode only call velostat and flex sensor calibration
     // if learning mode call velostat, flex, and haptic calibration (needs mux)
     switch(gFreeplayMode) {
@@ -108,14 +124,19 @@ void setup {
             gFreeplayMode = false;
             calibrateVelostat(); // velostat and flex sensors
             calibrateHaptics(); // haptics calibration function
-            // send notice to python to hash out song selection
+            
             /**
              * You have selected learning mode. Please select a song by pressing the rightmost button
              * once for Song 1, twice for Song 2, thrice for Song 3.
              */
-            // detect and wait to see how many times button was pressed, send that 
-            // number back to the python unit - only for left hand
             if(TEENSY_HAND == Hand::Left) {
+
+                // Step 5: SONG SELECTION
+                Serial.write(VoiceCommands:SELSONG, sizeof(SELSONG))
+
+                // detect and wait to see how many times button was pressed, send that 
+                // number back to the python unit - only for left hand
+
                 int songPressCount = buttonPressCount(5000, BUTTON_SONG); // 5 second window to press button
                 Serial.print(songPressCount); // send selected song number back to python
             }
@@ -125,11 +146,11 @@ void setup {
     // Step 5: Final confirmation message to python that setup is complete and game can begin.
     // really a message that says "if u press the mode button at any point during gameplay,
     // you can change modes."
+    Serial.print("VOICE MESSAGE TO CHANGE MODES YADDA YADDA YADDA HAVE FUN PLAYING")
 
     // final confirmation message to python - this cues it to play out 
     // final message on audio hat and then clear its input buffer or whatever needs to be done
     Serial.print("COMPLETE");
-
 }
 
 
