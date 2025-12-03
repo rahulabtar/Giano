@@ -12,12 +12,12 @@ import threading
 import queue
 import time
 import logging
-from typing import Optional, List, Dict, Callable, Literal
+from typing import Optional, List, Dict, Callable, Literal, Union
 from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
 
-from .protocols import GloveProtocolFreeplayMode, GloveProtocolLearningMode, AudioProtocol, PlayMode, Hand, SensorValue, SensorNumberLeft
+from .protocols import GloveProtocolFreeplayMode, GloveProtocolLearningMode, AudioProtocol, PlayingMode, Hand, SensorValue, SensorNumberLeft
 
 from src.core.constants import SERIAL_BAUD_RATE, LEFT_PORT, RIGHT_PORT
 
@@ -26,6 +26,8 @@ from src.core.constants import SERIAL_BAUD_RATE, LEFT_PORT, RIGHT_PORT
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# SWITCH PORTS AND DURING CONNECTION RETURN THE HAND
+# LEFT SETUP WILL READ THE PLAYING MODE FROM THE GLOVE CONTROLLER
 
 class BaseSerialManager:
     """
@@ -70,16 +72,33 @@ class BaseSerialManager:
         
         return available
     
-    def _connect(self, port: str) -> bool:
-        """Connect to device on specified port."""
+    def _connect(self, port: str) -> tuple[bool, Optional[Hand]]:
+        """
+        Connect to device on specified port.
+        
+        Returns:
+            Tuple of (success: bool, detected_hand: Optional[Hand])
+            - success: True if connection successful
+            - detected_hand: The hand detected during connection, or None if failed/not a glove
+        """
         try:
             self.conn = serial.Serial(port, self.baud_rate, timeout=0.1)
             self.port = port
-            logger.info(f"Connected to device on {port}")
-            return True
+            hand_bytes = self.conn.read(1)
+            if not hand_bytes:
+                logger.warning("No hand bytes received from device")
+                return False, None
+            hand_value = hand_bytes[0]
+            if hand_value == Hand.LEFT.value:
+                return True, Hand.LEFT
+            elif hand_value == Hand.RIGHT.value:
+                return True, Hand.RIGHT
+            else:
+                logger.warning(f"Invalid hand value: {hand_value}")
+                return False, None
         except Exception as e:
             logger.error(f"Failed to connect on {port}: {e}")
-            return False
+            return False, None
     
     def disconnect(self):
         """Disconnect from device."""
@@ -91,11 +110,73 @@ class BaseSerialManager:
         """Check if connected to device."""
         return self.conn is not None and self.conn.is_open
     
+    def _test_port(self, port: str) -> bool:
+        """
+        Test if a port is the correct device.
+        
+        Subclasses should override this method to implement device-specific
+        identification logic. Default implementation just checks if the port
+        can be opened.
+        
+        Args:
+            port: Serial port to test
+            
+        Returns:
+            True if port matches the device, False otherwise
+        """
+        try:
+            s = serial.Serial(port, self.baud_rate, timeout=0.1)
+            s.close()
+            return True
+        except:
+            return False
+    
+    def _auto_connect(self) -> tuple[bool, Optional[Hand]]:
+        """
+        Auto-detect and connect to device by testing available ports.
+        
+        Iterates through available serial ports and tests each one using
+        _test_port(). Connects to the first port that passes the test.
+        
+        Returns:
+            Tuple of (success: bool, detected_hand: Optional[Hand])
+            - success: True if connection successful, False otherwise
+            - detected_hand: The hand detected during connection, or None if failed
+        """
+        available_ports = self._list_serial_ports()
+        logger.info(f"Available serial ports: {available_ports}")
+        
+        for port in available_ports:
+            if self._test_port(port):
+                success, detected_hand = self._connect(port)
+                if success:
+                    return success, detected_hand
+        
+        logger.warning("Could not auto-detect device")
+        return False, None
+    
     def stop(self):
         """Stop all communication threads."""
         self._running = False
         self.disconnect()
 
+""" 
+Glove connection / hand-detection process
+ 1. BaseSerialManager._connect(port) opens the serial port and reads 1 byte to
+    detect the hand: Hand.LEFT or Hand.RIGHT.
+ 2. BaseSerialManager._auto_connect() scans ports, uses _test_port(), then
+    calls _connect() and returns (success, detected_hand).
+ 3. LeftGloveSerialManager.connect():
+    - Calls _connect() / _auto_connect().
+    - If detected_hand != self.hand:
+        * Logs a warning.
+        * Uses create_for_hand(detected_hand, port, baud) to build the correct
+          manager (LeftGloveSerialManager or RightGloveSerialManager).
+        * Transfers the open serial connection to that manager (no reconnect),
+          starts it, and returns it.
+    - If detected_hand == self.hand:
+        * Updates self.hand, calls start(), and returns self. 
+"""
 
 class LeftGloveSerialManager(BaseSerialManager):
     """
@@ -111,9 +192,7 @@ class LeftGloveSerialManager(BaseSerialManager):
         
         Args:
             port: Serial port for glove controller (None for auto-detect)
-            source_hand: 'L' or 'R' from which hand the glove controller is connected to
             baud_rate: Baud rate for serial communication
-            auto_connect: If True, automatically connect on init
         """
         super().__init__(port, baud_rate)
         
@@ -129,38 +208,71 @@ class LeftGloveSerialManager(BaseSerialManager):
         self.callback: Optional[Callable] = None
         
         self.hand = Hand.LEFT
-        
-
-        
+        self._play_mode: Optional[PlayingMode] = None
     
-    def connect(self) -> Tuple[bool, ]:
+    @classmethod
+    def create_for_hand(cls, hand: Hand, port: Optional[str] = None, baud_rate: int = SERIAL_BAUD_RATE):
         """
-        Connect to left glove controller.
-        MUST BE CALLED BEFORE LeftGloveSerialManager.start()
+        Factory method to create the correct glove manager for a detected hand.
+        
+        Args:
+            hand: The detected hand (Hand.LEFT or Hand.RIGHT)
+            port: Serial port (None for auto-detect)
+            baud_rate: Baud rate for serial communication
+            
         Returns:
-            True if connection successful, False otherwise
+            LeftGloveSerialManager or RightGloveSerialManager instance
+        """
+        if hand == Hand.LEFT:
+            return LeftGloveSerialManager(port=port, baud_rate=baud_rate)
+        elif hand == Hand.RIGHT:
+            return RightGloveSerialManager(port=port, baud_rate=baud_rate)
+        else:
+            raise ValueError(f"Invalid hand: {hand}")
+    
+    def connect(self) -> tuple[bool, Optional[Hand], Optional[Union['LeftGloveSerialManager', 'RightGloveSerialManager']]]:
+        """
+        Connect to glove controller. If the wrong hand is detected, returns
+        a new manager instance for the correct hand with the connection transferred.
+        
+        MUST BE CALLED BEFORE start()
+        
+        Returns:
+            Tuple of (success: bool, detected_hand: Optional[Hand], correct_manager: Optional[Union[LeftGloveSerialManager, RightGloveSerialManager]])
+            - success: True if connection successful
+            - detected_hand: The hand detected during connection
+            - correct_manager: If wrong hand detected, returns the correct manager type (LeftGloveSerialManager or RightGloveSerialManager) with connection transferred. Otherwise None.
         """
         if self.port:
-            result = self._connect(self.port)
+            success, detected_hand = self._connect(self.port)
         else:
-            result = self._auto_connect()
+            success, detected_hand = self._auto_connect()
         
-        if result:
-            self.start()
+        if not success:
+            return False, None, None
         
-        return result
-    
-    def _auto_connect(self) -> bool:
-        """Auto-detect and connect to glove controller."""
-        available_ports = self._list_serial_ports()
-        logger.info(f"Available serial ports: {available_ports}")
+        # Check if we connected to the wrong hand
+        if detected_hand != self.hand:
+            logger.warning(
+                f"Connected to {detected_hand}-hand glove but this is a {self.hand}-hand manager. "
+                f"Switching to correct manager type."
+            )
+            # Transfer the connection to the correct manager type
+            correct_manager = self.create_for_hand(detected_hand, port=self.port, baud_rate=self.baud_rate)
+            # Transfer the connection (don't disconnect, just transfer)
+            correct_manager.conn = self.conn
+            correct_manager.port = self.port
+            correct_manager.hand = detected_hand
+            # Clear our connection so we don't close it
+            self.conn = None
+            # Start the correct manager
+            correct_manager.start()
+            return True, detected_hand, correct_manager
         
-        for port in available_ports:
-            if self._test_port(port):
-                return self._connect(port)
-        
-        logger.warning("Could not auto-detect glove controller")
-        return False
+        # Correct hand detected, update self.hand and start
+        self.hand = detected_hand
+        self.start()
+        return True, detected_hand, None
     
     def _test_port(self, port: str) -> bool:
         """
@@ -228,11 +340,11 @@ class LeftGloveSerialManager(BaseSerialManager):
             
             print(f"Mode: {mode_value} from {self.hand}-hand glove controller")
             
-            # PlayMode is a regular Enum, so compare with .value
-            if mode_value == PlayMode.LEARNING_MODE.value:
-                self._play_mode = PlayMode.LEARNING_MODE
-            elif mode_value == PlayMode.FREEPLAY_MODE.value:
-                self._play_mode = PlayMode.FREEPLAY_MODE
+            # PlayingMode is a regular Enum, so compare with .value
+            if mode_value == PlayingMode.LEARNING_MODE.value:
+                self._play_mode = PlayingMode.LEARNING_MODE
+            elif mode_value == PlayingMode.FREEPLAY_MODE.value:
+                self._play_mode = PlayingMode.FREEPLAY_MODE
             else:
                 raise ValueError(f"Invalid play mode: {mode_value}")
 
@@ -266,7 +378,7 @@ class LeftGloveSerialManager(BaseSerialManager):
         """
         print(f"Received from {self.hand}-Teensy:", line)
 
-        if self._play_mode == PlayMode.FREEPLAY_MODE:
+        if self._play_mode == PlayingMode.FREEPLAY_MODE:
             instruction = GloveProtocolFreeplayMode.unpack(line)
             if instruction.hand != self.hand:
                 logger.warning(f"Found incorrect {instruction.hand}-hand glove controller on {self.port}, switching hand info...")
@@ -280,7 +392,7 @@ class LeftGloveSerialManager(BaseSerialManager):
             elif instruction.sensorValue == SensorValue.Released: # this we can use to map to a note and turn it off
                 print(f"[{instruction.hand}] Sensor {instruction.sensorNumber} RELEASED") #instead of just printing it otu
 
-        elif self._play_mode == PlayMode.LEARNING_MODE:
+        elif self._play_mode == PlayingMode.LEARNING_MODE:
             instruction = GloveProtocolLearningMode.unpack(line)
             # TODO: Implement learning mode handling
             return instruction
@@ -301,10 +413,10 @@ class LeftGloveSerialManager(BaseSerialManager):
             midi_note: MIDI note number
             action: Action code
         """
-        if self._play_mode == PlayMode.FREEPLAY_MODE:
+        if self._play_mode == PlayingMode.FREEPLAY_MODE:
             # TODO: this is wrong for freeplay mode
             message = GloveProtocolFreeplayMode.pack(motor_id, midi_note, action)
-        elif self._play_mode == PlayMode.LEARNING_MODE:
+        elif self._play_mode == PlayingMode.LEARNING_MODE:
             message = GloveProtocolLearningMode.pack(motor_id, midi_note, action)
         else:
             raise ValueError(f"Invalid play mode: {self._play_mode}")
@@ -358,6 +470,39 @@ class LeftGloveSerialManager(BaseSerialManager):
                 logger.error(f"Error receiving glove message: {e}")
                 time.sleep(0.1)
 
+
+class RightGloveSerialManager(LeftGloveSerialManager):
+    """
+    Manages serial communication with right glove controller for haptic feedback.
+    
+    Inherits from LeftGloveSerialManager and only changes the default hand.
+    """
+    
+    def __init__(self, 
+                 port: Optional[str] = None, 
+                 baud_rate: int = SERIAL_BAUD_RATE, 
+                ):
+        """
+        Initialize right glove serial manager.
+        
+        Args:
+            port: Serial port for glove controller (None for auto-detect)
+            baud_rate: Baud rate for serial communication
+        """
+        super().__init__(port, baud_rate)
+        self.hand = Hand.RIGHT
+    
+    def start(self):
+        """
+        Start all communication threads.
+
+        This will correspond to setup on the right glove controller.
+        
+        Note: This consumes the mode byte from the serial stream.
+        If the glove only sends this byte once on startup, ensure it's
+        available when start() is called.
+        """
+        super().start()  # Call parent implementation
 
 
 # Legacy functions for backward compatibility
