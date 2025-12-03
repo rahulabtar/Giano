@@ -470,7 +470,7 @@ void setup() {
 
     Serial.write(static_cast<uint8_t>(VoiceCommands::HOW_TO_CHANGE_MODE));
     delay(5500);
-    Serial.write(static_cast<uint8_t>(VoiceCommands::HOW_TO_CHANGE_SONG));
+    Serial.write(static_cast<uint8_t>(VoiceCommands::HOW_TO_RESET_SONG));
     delay(5500);
 
     // final confirmation message to python - this cues it to play out 
