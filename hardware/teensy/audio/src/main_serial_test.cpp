@@ -23,7 +23,7 @@ void setup() {
     Serial.begin(115200);
     delay(100);
 
-    Serial.write(Hand::Audio, sizeof(Hand::Audio));
+    Serial.write(static_cast<uint8_t>(Hand::Audio));
 
     Serial.println("Setting up SD Card...");
     int sdSuccess = voiceCmds.setUpSD();
