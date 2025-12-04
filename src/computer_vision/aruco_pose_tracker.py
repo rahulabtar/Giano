@@ -168,6 +168,8 @@ class ArucoPoseTracker:
         
         # Check for problematic high intensity regions (distinguishes white paper from overexposure)
         
+        #TODO: add aruco_grid detection
+
         # Only apply adaptive preprocessing if:
         # 1. It's enabled AND
         # 2. There's a problematic intensity situation (not just white paper) OR
