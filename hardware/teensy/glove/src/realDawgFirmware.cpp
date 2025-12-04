@@ -3,6 +3,7 @@
 #include <Wire.h>
 #include "Adafruit_DRV2605.h"
 
+
 // I'm a floo flammer homie all these chains on my neck I need two hammers homie
 
 /**
@@ -127,7 +128,6 @@ void calibrateVelostat(unsigned int SAMPLE_COUNT = 200, unsigned int SAMPLE_PERI
   Serial.write(static_cast<uint8_t>(VoiceCommands::CALIBRATING));
   delay(2500);
   Serial.write(static_cast<uint8_t>(VoiceCommands::CALIBRATE_SINE_WAVE));
-  delay(8500);
 
   //Serial.println(" Velostat Calibration for Open ...");
   //delay(1000); 
@@ -165,7 +165,7 @@ void calibrateVelostat(unsigned int SAMPLE_COUNT = 200, unsigned int SAMPLE_PERI
   Serial.write(static_cast<uint8_t>(VoiceCommands::CALIBRATING));
   delay(2500);
   Serial.write(static_cast<uint8_t>(VoiceCommands::CALIBRATE_SINE_WAVE));
-  delay(8500);
+  
   //Serial.println(" Velostat Calibration for closed (light press)...");
   //delay(1000); 
   //Serial.println("Please hold all fingertips against surface lightly, like you are petting a cat :D");
@@ -201,7 +201,6 @@ void calibrateVelostat(unsigned int SAMPLE_COUNT = 200, unsigned int SAMPLE_PERI
   Serial.write(static_cast<uint8_t>(VoiceCommands::CALIBRATING));
   delay(2500);
   Serial.write(static_cast<uint8_t>(VoiceCommands::CALIBRATE_SINE_WAVE));
-  delay(8500);
   //Serial.println(" Velostat Calibration for closed (hard press)...");
   //delay(1000);
   //Serial.println("Please hold all fingertips against surface hard :D");
@@ -333,7 +332,7 @@ void checkFingerPress() {
     
       // SENDS TO RASPI
       Serial.write(static_cast<uint8_t>(TEENSY_HAND));
-      Serial.write(static_cast<uint8_t>(SensorValue::Pressed));
+      Serial.write(static_cast<uint8_t>(SensorValue::PRESSED));
       Serial.write(static_cast<uint8_t>(i));     // send "note on" to receiver
 
       gSensorState[i] = true;  // remember it's pressed
@@ -345,7 +344,7 @@ void checkFingerPress() {
 
       // SENDING IT TO RASPI
       Serial.write(static_cast<uint8_t>(TEENSY_HAND));
-      Serial.write(static_cast<uint8_t>(SensorValue::Released));
+      Serial.write(static_cast<uint8_t>(SensorValue::RELEASED));
       Serial.write(static_cast<uint8_t>(i));     // send "note off" to receiver
 
       gSensorState[i] = false; // update state
@@ -371,77 +370,104 @@ void guideFingerPress() {
 
 }
 
+
+
+
+
 /**
  * SETUP FUNCTION TO RUN AT STARTUP AND AID IN SELECTING SONG/ MODE
  */
 void setup() {
 
-    // Step 1: Initialize Serial Communication
-    Serial.begin(115200); // for raspi <-> communication via USB
-    
-    Wire.begin();
-    delay(100); // just a buffer delay
-
-    
-    // ========== ROBUST HANDSHAKE PROTOCOL ==========
-    // Step 1: Clear any stale data in buffer
-    while(Serial.available()) {
-      Serial.read();
-    }
-    
-    // Step 2: Wait for handshake request (specific byte: 0xAA)
-    const uint8_t HANDSHAKE_REQUEST = 0xAA;
-    const uint8_t HANDSHAKE_ACK = 0x55;
-    
-    Serial.setTimeout(100);  // 100ms timeout for each read attempt
-    
-    while (true) {
-      if (Serial.available() > 0) {
-        uint8_t receivedByte = Serial.read();
+    // Step 1: Initialize Serial and wait for USB enumeration
+  Serial.begin(115200);
+  Wire.begin();
+  
+  // Wait for USB CDC to be ready (crucial!)
+  while (!Serial) {
+    delay(10);
+  }
+  delay(100);  // Additional stabilization time
+  
+  // Clear any stale data that arrived during boot
+  while (Serial.available()) {
+    Serial.read();
+  }
+  
+  // ========== ROBUST HANDSHAKE PROTOCOL ==========
+  const uint8_t HANDSHAKE_REQUEST = 0xAA;
+  const uint8_t HANDSHAKE_ACK = 0x55;
+  
+  // Wait for handshake with timeout
+  bool handshake_complete = false;
+  unsigned long handshake_start = millis();
+  const unsigned long HANDSHAKE_TIMEOUT = 30000;  // 30 second timeout
+  
+  while (!handshake_complete && (millis() - handshake_start < HANDSHAKE_TIMEOUT)) {
+    // Check if we received handshake request
+    if (Serial.available() > 0) {
+      uint8_t received = Serial.read();
+      
+      if (received == HANDSHAKE_REQUEST) {
+        // Clear any additional bytes
+        delay(10);
+        while (Serial.available()) {
+          Serial.read();
+        }
         
-        if (receivedByte == HANDSHAKE_REQUEST) {
-            // Step 3: Send handshake acknowledgment
-            Serial.write(HANDSHAKE_ACK);
-            delay(10);
-            
-            // Step 4: Send hand identifier
-            Serial.write(static_cast<uint8_t>(TEENSY_HAND));
-            delay(10);
-            
-            // Step 5: Wait for confirmation from Pi
-            unsigned long startWait = millis();
-            while (millis() - startWait < 1000) {  // 1 second timeout
-            if (Serial.available() > 0) {
-                uint8_t confirm = Serial.read();
-                if (confirm == HANDSHAKE_ACK) {
-                // Connection established successfully
-                break;
-                }
+        // Send ACK
+        Serial.write(HANDSHAKE_ACK);
+        Serial.flush();  // Ensure it's sent
+        delay(50);
+        
+        // Send hand identifier
+        Serial.write(static_cast<uint8_t>(TEENSY_HAND));
+        Serial.flush();
+        delay(50);
+        
+        // Wait for confirmation from Pi
+        unsigned long confirm_start = millis();
+        while (millis() - confirm_start < 10000) {  // 10 second timeout
+          if (Serial.available() > 0) {
+            uint8_t confirm = Serial.read();
+            if (confirm == HANDSHAKE_ACK) {
+              handshake_complete = true;
+              break;
             }
-            delay(10);
           }
+          delay(10);
+        }
+        
+        if (handshake_complete) {
           break;  // Exit handshake loop
         }
       }
-      delay(50);  // Small delay between handshake attempts
-      Serial.println("Waiting for handshake...");
     }
     
-    // Clear buffers after successful handshake
-    while(Serial.available()) {
-      Serial.read();
+    delay(50);  // Small delay between checks
+  }
+  
+  // If handshake failed, blink LED as error indicator
+  if (!handshake_complete) {
+    pinMode(LED_BUILTIN, OUTPUT);
+    while (true) {  // Stuck in error state
+      digitalWrite(LED_BUILTIN, HIGH);
+      delay(200);
+      digitalWrite(LED_BUILTIN, LOW);
+      delay(200);
     }
-    delay(100);
+  }
+  
+  // Clear buffers after successful handshake
+  delay(100);
+  while (Serial.available()) {
+    Serial.read();
+  }
+  
+  // ========== NOW PROCEED WITH SETUP ==========
 
-    // ========== END HANDSHAKE PROTOCOL ==========
+
     
-    // BOOTUP SOUND
-    while (!Serial.availableForWrite()) {
-      delay(5);
-    }
-    Serial.write(static_cast<uint8_t>(VoiceCommands::WELCOME_MUSIC));
-    
-    delay(6000);
 
     // Step 2: Initialize all necessary sensors/button components for setup logic
     // we only want buttons to work if on left hand
@@ -454,12 +480,22 @@ void setup() {
 
 
     if(TEENSY_HAND == Hand::Left) {
+        // startup song
+        // BOOTUP SOUND
+        while (!Serial.availableForWrite()) {
+          delay(5);
+        }
+        Serial.write(static_cast<uint8_t>(VoiceCommands::WELCOME_MUSIC));
+        
+        delay(6000);
 
         // Step 3: Setup, mode, and song selection logic! 
         // send notif to PYTHON to play the initial setup message of 
 
         // "welcome to GIANO, please select the mode by pressing the leftmost button. once 
         // for freeplay, twice for learning mode."
+        
+        
         Serial.write(static_cast<uint8_t>(VoiceCommands::WELCOME_TEXT));
         delay(2500);
         Serial.write(static_cast<uint8_t>(VoiceCommands::MODE_SELECT_BUTTONS));
@@ -471,6 +507,7 @@ void setup() {
         //delay(200); // not needed???
 
         int modePressCount = buttonPressCount(5000, BUTTON_MODE); // 5 second window to press button
+        
         if(modePressCount == 1) {
             gFreeplayMode = true; 
             Serial.write(static_cast<uint8_t>(VoiceCommands::FREEPLAY_MODE_CONFIRM));

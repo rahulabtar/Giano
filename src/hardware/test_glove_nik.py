@@ -2,10 +2,12 @@ from serial_manager import LeftGloveSerialManager, RightGloveSerialManager, Audi
 from protocols import PlayingMode, Hand, VoiceCommand
 from src.core.constants import LEFT_PORT, RIGHT_PORT, SERIAL_BAUD_RATE
 import time
+import logging
 
 num_gloves = 1
 
-
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 # MAY NEED THREADSAFETY
 
 def teensy_connect():
@@ -21,16 +23,15 @@ def teensy_connect():
     left_glove = None
     audio_board = None
 
-    left_glove = LeftGloveSerialManager(baud_rate=SERIAL_BAUD_RATE, port = '/dev/cu.usbmodem179425001')
+    left_glove = LeftGloveSerialManager(baud_rate=SERIAL_BAUD_RATE, port = 'COM10')
     audio_board = AudioBoardManager()
     print("Initialized the glove.")
 
     
-    audio_board.play_voice_command(VoiceCommand.CALIB_VELO_NO_PRESS)
 
     success, hand, left_glove = left_glove.connect(num_retries=10)
     
-    
+ 
 
     if hand == Hand.RIGHT:
       right_glove = left_glove
@@ -53,21 +54,35 @@ def teensy_connect():
 if __name__ == "__main__":
   left_glove, right_glove, audio_board = teensy_connect()
 
-  print("swag")
-  print("me")
+  print("swag is swag")
 
-  # Receive and process voice commands
-  for message in ["Welcome message", "Mode Select Buttons Message", "Learning Mode or Freeplay Mode"]:
+  # entering calibation process
+  time.sleep(1)
+  while True:
     command = left_glove.receive_byte()
-    print(f"command is {command} ({message})")
-    audio_board.note_on(command - 1)
+    if command == VoiceCommand.FLUSH.value:
+      logger.info("Flush command received")
+      continue
+    if command is not None:
+      print(f"command is {command}")
+
+      if (command == PlayingMode.LEARNING_MODE.value):
+        left_glove._play_mode = PlayingMode.LEARNING_MODE
+        logger.info("Learning mode")
+      elif (command == PlayingMode.FREEPLAY_MODE.value):
+        left_glove._play_mode = PlayingMode.FREEPLAY_MODE
+        logger.info("Freeplay mode")
+      else:
+        command_enum = VoiceCommand(command)
+        audio_board.play_voice_command(command_enum)
+      time.sleep(0.1)
+    else:
+      print("No command received")
+      time.sleep(0.1)
 
 
 
-  # if (command == VoiceCommand.LEARNING_MODE_SELECTED):
-  #   for glove in gloves: glove.set_playing_mode(PlayingMode.LEARNING_MODE)
-  # elif (command == VoiceCommand.FREEPLAY_MODE_SELECTED):
-  #   for glove in gloves: glove.set_playing_mode(PlayingMode.FREEPLAY_MODE)
+
   
 
   

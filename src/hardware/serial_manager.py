@@ -104,12 +104,16 @@ class BaseSerialManager:
                     parity=serial.PARITY_NONE
                 )
                 
+                logger.info(f"Clearing input and output buffers for {port}")
+
                 # Step 2: Clear any stale data
                 time.sleep(0.1)  # Let any boot messages arrive
                 self.conn.reset_input_buffer()
                 self.conn.reset_output_buffer()
                 time.sleep(0.1)
                 
+                logger.info(f"Sending handshake request to {port}")
+
                 # Step 3: Send handshake request
                 self.conn.write(bytes([HANDSHAKE_REQUEST]))
                 self.conn.flush()  # Ensure data is sent
@@ -391,7 +395,7 @@ class LeftGloveSerialManager(BaseSerialManager):
         print(f"Voice command byte received: {voice_command}")
         return voice_command[0]
     
-    def receive_byte(self) -> bytes:
+    def receive_byte(self) -> Optional[int]:
         """
         Recieve a single byte from the glove controller.
         """
@@ -638,7 +642,14 @@ class AudioBoardManager:
             logger.info(f"Available audio ports: {available_ports}")
             if len(available_ports) == 0:
                 raise ValueError("No audio ports found")
-            self.port = available_ports[0]
+            
+            for port in available_ports:
+                if "Teensy MIDI" in port:
+                    self.port = port
+                    break
+            
+            if not self.port:
+                raise ValueError("No Teensy MIDI port found")
 
         self.out = mido.open_output(self.port)
         logger.info(f"Audio board manager initialized on port: {self.port}")
@@ -665,6 +676,7 @@ class AudioBoardManager:
         Voice commands use MIDI note values 0-59 (values 60+ are reserved
         for regular piano notes). The command is sent as a note_on followed
         immediately by note_off to trigger the voice playback on the Teensy.
+        Voice commands will assume delays on left glove
         """
         note_value = command.value
         
@@ -683,7 +695,10 @@ class AudioBoardManager:
             )
         
         self.out.send(mido.Message('note_on', note=note_value, velocity=127, channel=0))
-        self.out.send(mido.Message('note_off', note=note_value, velocity=0, channel=0))
+        
+        # TODO: figure out how to not wait for 10 fucking seconds
+
+        
 
 
 

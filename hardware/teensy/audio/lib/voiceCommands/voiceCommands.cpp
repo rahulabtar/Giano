@@ -22,8 +22,21 @@ void VoiceCommands::playInstruction(const char *filename)
   if (isSetup_) {  
     Serial.print("Playing file: ");
     Serial.println(filename);
+    if (playWav1.isPlaying()) {
+      playWav1.stop(); //stop currently playing file
+    }
+
     playWav1.play(filename); //if a wav is already playing, stop currently playing file and plays new filename
-    delay(25); //delay should be here to allow time to read the wav header 
+    
+    uint32_t length = playWav1.lengthMillis();
+    
+    // Blocking version for now: wait here until file is done playing
+    // TODO: figure out how to make non-blocking
+    delay(length + 100); //add a small buffer to ensure full playback
+
+    Serial.print("Played for (ms): ");
+    Serial.println(length);
+
   }
   // without this while loop, the playInstr function is non-blocking
   // while (playWav1.isPlaying()) {
@@ -34,7 +47,7 @@ void VoiceCommands::playInstruction(const char *filename)
 const char* VoiceCommands::getFileName(VocalCommandCodes command) {
     Serial.print("Getting filename for command: ");
     switch(command) {
-        case VocalCommandCodes::WELCOME_MUSIC:          return WELCOME_SD;
+        case VocalCommandCodes::WELCOME_MUSIC:          return WELCOME_SONG_SD;
         case VocalCommandCodes::WELCOME_TEXT:           return SELSONG_SD;
         case VocalCommandCodes::MODE_SELECT_BUTTONS:    return MODE_SELECT_BUTTONS_SD;
         case VocalCommandCodes::SELECT_SONG:            return SELECT_SONG_SD;
@@ -53,7 +66,7 @@ const char* VoiceCommands::getFileName(VocalCommandCodes command) {
         case VocalCommandCodes::CALIBRATION_FAILED:     return CALIBRATION_FAILED_SD;
         case VocalCommandCodes::CALIBRATION_SUCCESS:    return CALIBRATION_SUCCESS_SD;
         case VocalCommandCodes::FIX_POSTURE:            return FIX_POSTURE_SD;
-        default:                                        return BOOTED_SD;
+        default:                                        return WELCOME_SONG_SD;
     }
 }
 
