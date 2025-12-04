@@ -335,7 +335,7 @@ class LeftGloveSerialManager(BaseSerialManager):
         else:
             success, detected_hand = self._auto_connect()
         
-        print(f"Success: {success}, Detected hand: {detected_hand}")
+        logger.info(f"Connection success: {success}, Detected hand: {detected_hand}")
         
         if not success:
             return False, None, None
@@ -348,7 +348,7 @@ class LeftGloveSerialManager(BaseSerialManager):
             )
             # Transfer the connection to the correct manager type
             correct_manager = self.create_for_hand(detected_hand, port=self.port, baud_rate=self.baud_rate)
-            # Transfer the connection (don't disconnect, just transfer)
+            # Transfer the connection
             correct_manager.conn = self.conn
             correct_manager.port = self.port
             correct_manager.hand = detected_hand
@@ -363,7 +363,17 @@ class LeftGloveSerialManager(BaseSerialManager):
         self._start()
         return True, detected_hand, None
     
-    
+    def _calibration_sequence(self):
+        """
+        Perform the calibration sequence.
+        """
+        logger.info(f"Performing calibration sequence for {self.hand}-hand glove controller")
+
+        # listen for welcome sound
+        while self.conn.in_waiting == 0:
+            time.sleep(0.1)
+        welcome_sound = self.conn.read(1)
+
     def _start(self):
         """
         Start all communication threads.
@@ -380,18 +390,8 @@ class LeftGloveSerialManager(BaseSerialManager):
         # Going through calibration sequence
         logger.info(f"Starting {self.hand}-hand glove controller")
 
-        # listen for welcome sound
-        while self.conn.in_waiting == 0:
-            time.sleep(0.1)
-        welcome_sound = self.conn.read(1)
-        if welcome_sound == VoiceCommand.WELCOME_MUSIC.value:
-            logger.info(f"Welcome sound received from {self.hand}-hand glove controller")
-        else:
-            logger.warning(f"No welcome sound received from {self.hand}-hand glove controller")
-            return
-        
-        # listen for mode select buttons
-        # while self.conn.in_waiting == 0:
+        # TODO: handle calibration sequence
+        self._calibration_sequence()
 
 
 
@@ -575,20 +575,6 @@ class RightGloveSerialManager(LeftGloveSerialManager):
 
 
 
-# Legacy functions for backward compatibility
-
-def read_from_teensy(port, source_hand):
-    """Run in its own thread to read from a single teensy"""
-    ser = serial.Serial(port, SERIAL_BAUD_RATE)
-    print(f"Listening on {port} for {source_hand}-hand Teensy...")
-
-    while True:
-        try:
-            line = ser.readline().decode().strip()
-            # TODO: Implement handle_line function or remove this legacy code
-            # handle_line(line)
-        except Exception as e:
-            print(f"Error on {source_hand}-hand port: {e}")
 
 
 
@@ -650,8 +636,7 @@ class AudioBoardManager:
         
         # Voice commands should be in range 0-59 (values 60+ are for regular notes)
         if note_value >= 60:
-            import logging
-            logging.warning(
+            logger.warning(
                 f"VoiceCommand {command.name} has value {note_value} which is in "
                 f"the regular MIDI note range (60+). Voice commands should be 0-59."
             )

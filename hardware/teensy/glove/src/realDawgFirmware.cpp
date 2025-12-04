@@ -421,7 +421,7 @@ void setup() {
 
     // ========== END HANDSHAKE PROTOCOL ==========
     
-    // calibration fsm
+    // ======== CALIBRATION FSM BASED ON VOICE COMMANDS ========
     while (true) {
         if (Serial.available() > 0) {
             uint8_t byteRecieve = Serial.read();
