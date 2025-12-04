@@ -424,7 +424,7 @@ void setup() {
         }
       }
       delay(50);  // Small delay between handshake attempts
-      //Serial.println("Waiting for handshake...");
+      Serial.println("Waiting for handshake...");
     }
     
     // Clear buffers after successful handshake

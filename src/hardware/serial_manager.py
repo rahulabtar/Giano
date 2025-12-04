@@ -125,6 +125,11 @@ class BaseSerialManager:
                             ack_received = True
                             logger.info(f"Handshake ACK received on {port}")
                             break
+                        elif ack_byte and ack_byte[0] != HANDSHAKE_ACK:
+                            logger.warning(f"Invalid ACK byte: {ack_byte.decode()} on {port}")
+                            print(ack_byte)
+
+                            
                     time.sleep(0.01)
                 
                 if not ack_received:
@@ -369,7 +374,7 @@ class LeftGloveSerialManager(BaseSerialManager):
         # Correct hand detected, update self.hand and start
         self.hand = detected_hand
         self._start()
-        return True, detected_hand, None
+        return True, detected_hand, self
     
     def recieve_voice_command(self) -> None:
         """
@@ -386,7 +391,7 @@ class LeftGloveSerialManager(BaseSerialManager):
         print(f"Voice command byte received: {voice_command}")
         return voice_command[0]
     
-    def receive_byte(self):
+    def receive_byte(self) -> bytes:
         """
         Recieve a single byte from the glove controller.
         """
@@ -397,25 +402,21 @@ class LeftGloveSerialManager(BaseSerialManager):
             time.sleep(0.1)
 
         byte = self.conn.read(1)
-        self.conn.reset_input_buffer()
+        if byte != b'':
+            self.conn.reset_input_buffer()
+            number = byte[0]
+            print(f"byte received: {number}")
 
-        print(f"byte received: {byte}")
+        else: 
+            print("No byte received")
+            number = None
+
+
+        return number
 
 
     
-    def calibrate_sequence(self):
-        """
-        Perform the Calibration sequence.
-        """
-        logger.info(f"Performing Calibration sequence for {self.hand}-hand glove controller")
-
-        # Recieve calibration complete byte
-
-        while self.conn.in_waiting == 0:
-            time.sleep(0.1)
-        calibration_complete = self.conn.read(1)
-        print(f"Calibration complete byte received: {calibration_complete}")
-        return calibration_complete
+  
 
     def _start(self):
         """
@@ -430,11 +431,7 @@ class LeftGloveSerialManager(BaseSerialManager):
         if self._running or not self.conn:
             return
         
-        # Going through calibration sequence
-        logger.info(f"Starting {self.hand.name}-hand glove controller")
-
-        # TODO: handle calibration sequence
-        byte_received = self._bootup_sequence()
+        
 
         return True
 

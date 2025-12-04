@@ -186,10 +186,8 @@ class GloveProtocolLearningMode:
 class VoiceCommand(IntEnum):
     #music played on boot
     WELCOME_MUSIC = 16
-
     #text played on boot
     WELCOME_TEXT = 17
-
     # missing
     MODE_SELECT_BUTTONS = 18
     SELECT_SONG = 19
@@ -204,6 +202,11 @@ class VoiceCommand(IntEnum):
     FLUSH = 27
     DEBUG = 28
     INVALID = 29
+    CALIBRATING = 30
+    CALIBRATE_SINE_WAVE = 31
+    CALIBRATION_FAILED = 32
+    CALIBRATION_SUCCESS = 33
+    FIX_POSTURE = 34
 
 
 
