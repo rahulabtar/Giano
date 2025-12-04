@@ -13,6 +13,9 @@ import queue
 import time
 import logging
 import mido
+from mido.backends import rtmidi
+mido.set_backend('mido.backends.rtmidi')
+
 from typing import Optional, List, Dict, Callable, Literal, Union
 from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent.parent))
@@ -59,13 +62,14 @@ class BaseSerialManager:
             ports = glob.glob('/dev/tty[A-Za-z]*')
         elif sys.platform.startswith('darwin'):
             ports = glob.glob('/dev/tty.*')
+            ports = [p for p in ports if "usbmodem" in p or "usbserial" in p] #disincludes bluetooth ports on mac
         else:
             ports = []
         
         available = []
         for port in ports:
             try:
-                s = serial.Serial(port)
+                s = serial.Serial(port, timeout=0.1)
                 s.close()
                 available.append(port)
             except:
@@ -296,6 +300,10 @@ class LeftGloveSerialManager(BaseSerialManager):
         
         self.hand = Hand.LEFT
         self._play_mode: Optional[PlayingMode] = None
+
+        self.audio_board = None
+
+
     
     @classmethod
     def create_for_hand(cls, hand: Hand, port: Optional[str] = None, baud_rate: int = SERIAL_BAUD_RATE):
@@ -331,9 +339,9 @@ class LeftGloveSerialManager(BaseSerialManager):
             - correct_manager: If wrong hand detected, returns the correct manager type (LeftGloveSerialManager or RightGloveSerialManager) with connection transferred. Otherwise None.
         """
         if self.port:
-            success, detected_hand = self._connect(self.port)
+            success, detected_hand = self._connect(self.port, num_retries)
         else:
-            success, detected_hand = self._auto_connect()
+            success, detected_hand = self._auto_connect(num_retries)
         
         logger.info(f"Connection success: {success}, Detected hand: {detected_hand}")
         
@@ -363,16 +371,51 @@ class LeftGloveSerialManager(BaseSerialManager):
         self._start()
         return True, detected_hand, None
     
-    def _calibration_sequence(self):
+    def recieve_voice_command(self) -> None:
         """
-        Perform the calibration sequence.
+        Recieve a voice command byte from the glove controller.
         """
-        logger.info(f"Performing calibration sequence for {self.hand}-hand glove controller")
+        logger.info(f"Recieving voice command for {self.hand}-hand glove controller")
 
-        # listen for welcome sound
+        # Recieve voice command byte
+
         while self.conn.in_waiting == 0:
             time.sleep(0.1)
-        welcome_sound = self.conn.read(1)
+        voice_command = self.conn.read(1)
+        self.conn.flush()
+        print(f"Voice command byte received: {voice_command}")
+        return voice_command[0]
+    
+    def receive_byte(self):
+        """
+        Recieve a single byte from the glove controller.
+        """
+
+        # Recieve byte
+
+        while self.conn.in_waiting == 0:
+            time.sleep(0.1)
+
+        byte = self.conn.read(1)
+        self.conn.reset_input_buffer()
+
+        print(f"byte received: {byte}")
+
+
+    
+    def calibrate_sequence(self):
+        """
+        Perform the Calibration sequence.
+        """
+        logger.info(f"Performing Calibration sequence for {self.hand}-hand glove controller")
+
+        # Recieve calibration complete byte
+
+        while self.conn.in_waiting == 0:
+            time.sleep(0.1)
+        calibration_complete = self.conn.read(1)
+        print(f"Calibration complete byte received: {calibration_complete}")
+        return calibration_complete
 
     def _start(self):
         """
@@ -388,12 +431,12 @@ class LeftGloveSerialManager(BaseSerialManager):
             return
         
         # Going through calibration sequence
-        logger.info(f"Starting {self.hand}-hand glove controller")
+        logger.info(f"Starting {self.hand.name}-hand glove controller")
 
         # TODO: handle calibration sequence
-        self._calibration_sequence()
+        byte_received = self._bootup_sequence()
 
-
+        return True
 
         if self.conn.in_waiting > 0:
             # Read the first byte in stream to get the mode info (consumes it)
@@ -480,7 +523,7 @@ class LeftGloveSerialManager(BaseSerialManager):
         Args:
             motor_id: Motor ID (0-4)
             midi_note: MIDI note number
-            action: Action code
+            action: Action code -MAY REFER TO OLD ACTION CODES TALK TO NIKK - RAJUL AND SKY 
         """
         if self._play_mode == PlayingMode.FREEPLAY_MODE:
             # TODO: this is wrong for freeplay mode
@@ -592,12 +635,13 @@ class AudioBoardManager:
         if port:
             self.port = port
         else:
+
+            print(mido.get_output_names())
             available_ports = mido.get_output_names()
             logger.info(f"Available audio ports: {available_ports}")
             if len(available_ports) == 0:
                 raise ValueError("No audio ports found")
             self.port = available_ports[0]
-
 
         self.out = mido.open_output(self.port)
         logger.info(f"Audio board manager initialized on port: {self.port}")

@@ -411,30 +411,24 @@ void setup() {
         }
       }
       delay(50);  // Small delay between handshake attempts
+      //Serial.println("Waiting for handshake...");
     }
     
     // Clear buffers after successful handshake
     while(Serial.available()) {
       Serial.read();
     }
-    delay(50);
+    delay(100);
 
     // ========== END HANDSHAKE PROTOCOL ==========
     
-    // ======== CALIBRATION FSM BASED ON VOICE COMMANDS ========
-    while (true) {
-        if (Serial.available() > 0) {
-            uint8_t byteRecieve = Serial.read();
-            
-            //fsm based on voice command received
-            
-            if (byteRecieve == static_cast<uint8_t>(VoiceCommands::WELCOME_MUSIC)) {
-                //
-
-            }
-        }
+    // BOOTUP SOUND
+    while (!Serial.availableForWrite()) {
+      delay(5);
     }
+    Serial.write(static_cast<uint8_t>(VoiceCommands::WELCOME_MUSIC));
     
+    delay(6000);
 
     // Step 2: Initialize all necessary sensors/button components for setup logic
     // we only want buttons to work if on left hand
