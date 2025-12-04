@@ -1,6 +1,6 @@
 from music21 import converter, note, articulations
 from enum import Enum
-
+import os
 
 class SortType(Enum):
     """An Enum represeting the different way ths MusicDecoder's Note's attribute can be organized in a list"""
@@ -133,7 +133,41 @@ class MusicDecoder:
         # Convert list of dicts to a string
         return self.score.metadata.title + "\n" + "\n".join(str(note) for note in notes_info)
 
+class SongHub():
+    def __init__(self):
+        self.song_paths = self.setSongPaths()
+        self.songs = []
+        for path in self.song_paths:
+            decoder = MusicDecoder(path)
+            self.songs.append(decoder)
+        self.song_infos = self.setSongInfos()
+            
+    def setSongPaths(self):
+        song_paths = []
+        # Go from src/audio → project root
+        root_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))  
+        mxl_folder = os.path.join(root_dir, "assets", "mxl_files")
+        
+        for mxl_file in os.listdir(mxl_folder):
+            if mxl_file.endswith(".mxl"):
+                song_paths.append(os.path.join(mxl_folder, mxl_file))
+        if song_paths == []:
+            raise RuntimeError("No .mxl files found in assets/mxl_files folder!")
+        return song_paths
+    
+    def setSongInfos(self):
+        tmp = []
+        for song in self.songs:
+            tmp.append(song.getNotesInfo())
+        return tmp
+    
+    def gimmeMySongs(self):
+        return self.song_infos
+    
+    def gimmeASong(self, song_num):
+        return (self.song_paths[song_num], self.song_infos[song_num])
 
-                
-
-
+#example usage
+if __name__ == "__main__":
+    hub = SongHub()
+    print(hub.gimmeASong(0))
