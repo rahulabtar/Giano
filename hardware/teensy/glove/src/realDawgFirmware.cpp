@@ -421,9 +421,20 @@ void setup() {
 
     // ========== END HANDSHAKE PROTOCOL ==========
     
-    // BOOTUP SOUND
-    Serial.write(static_cast<uint8_t>(VoiceCommands::WELCOME_MUSIC));
-    delay(5000);
+    // calibration fsm
+    while (true) {
+        if (Serial.available() > 0) {
+            uint8_t byteRecieve = Serial.read();
+            
+            //fsm based on voice command received
+            
+            if (byteRecieve == static_cast<uint8_t>(VoiceCommands::WELCOME_MUSIC)) {
+                //
+
+            }
+        }
+    }
+    
 
     // Step 2: Initialize all necessary sensors/button components for setup logic
     // we only want buttons to work if on left hand

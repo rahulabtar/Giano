@@ -1,9 +1,10 @@
 
 import time
 import mido
-from protocols import VoiceCommand, AudioProtocol
+from protocols import VoiceCommands
+from serial_manager import AudioBoardManager
 print(mido.get_output_names())
-audio = AudioProtocol()
+audio = AudioBoardManager()
 while True:
     for i in range (9):
         print("Turning Note On " + str(60 + i))

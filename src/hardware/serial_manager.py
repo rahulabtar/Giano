@@ -73,39 +73,115 @@ class BaseSerialManager:
         
         return available
     
-    def _connect(self, port: str) -> tuple[bool, Optional[Hand]]:
+    def _connect(self, port: str, max_retries: int = 5) -> tuple[bool, Optional[Hand]]:
         """
-        Connect to device on specified port.
+        Connect to device on specified port with robust handshake.
         
+        Args:
+            port: Serial port to connect to
+            max_retries: Maximum number of connection attempts
+            
         Returns:
             Tuple of (success: bool, detected_hand: Optional[Hand])
-            - success: True if connection successful
-            - detected_hand: The hand detected during connection, or None if failed/not a glove
         """
-        try:
-            self.conn = serial.Serial(port, self.baud_rate, timeout=0.1)
-            self.port = port
-
-            hand_bytes = self.conn.read(1)
-            while not hand_bytes:
-                hand_bytes = self.conn.read(1)
+        HANDSHAKE_REQUEST = 0xAA
+        HANDSHAKE_ACK = 0x55
+        
+        for attempt in range(max_retries):
+            try:
+                logger.info(f"Connection attempt {attempt + 1}/{max_retries} on {port}")
+                
+                # Step 1: Open serial port with longer timeout
+                self.conn = serial.Serial(
+                    port, 
+                    baudrate=self.baud_rate, 
+                    timeout=1.0,
+                    write_timeout=1.0,
+                    parity=serial.PARITY_NONE
+                )
+                
+                # Step 2: Clear any stale data
+                time.sleep(0.1)  # Let any boot messages arrive
+                self.conn.reset_input_buffer()
+                self.conn.reset_output_buffer()
                 time.sleep(0.1)
-            print(f"Hand bytes: {hand_bytes}")
-            if not hand_bytes:
-                logger.warning("No hand bytes received from device")
-                return False, None
-            hand_value = hand_bytes[0]
-            if hand_value == Hand.LEFT.value:
-                return True, Hand.LEFT
-            elif hand_value == Hand.RIGHT.value:
-                return True, Hand.RIGHT
-            else:
-                logger.warning(f"Invalid hand value: {hand_value}")
-                return False, None
-        except Exception as e:
-            logger.error(f"Failed to connect on {port}: {e}")
-            return False, None
-    
+                
+                # Step 3: Send handshake request
+                self.conn.write(bytes([HANDSHAKE_REQUEST]))
+                self.conn.flush()  # Ensure data is sent
+                
+                # Step 4: Wait for ACK
+                start_time = time.time()
+                ack_received = False
+                
+                while time.time() - start_time < 2.0:  # 2 second timeout for ACK
+                    if self.conn.in_waiting > 0:
+                        ack_byte = self.conn.read(1)
+                        if ack_byte and ack_byte[0] == HANDSHAKE_ACK:
+                            ack_received = True
+                            logger.info(f"Handshake ACK received on {port}")
+                            break
+                    time.sleep(0.01)
+                
+                if not ack_received:
+                    logger.warning(f"No handshake ACK on {port}, retrying...")
+                    self.conn.close()
+                    time.sleep(0.5)
+                    continue
+                
+                # Step 5: Read hand identifier
+                hand_bytes = self.conn.read(1)
+                if not hand_bytes:
+                    logger.warning(f"No hand byte received on {port}, retrying...")
+                    self.conn.close()
+                    time.sleep(0.5)
+                    continue
+                
+                hand_value = hand_bytes[0]
+                logger.info(f"Received hand byte: {hand_value} on {port}")
+                
+                # Step 6: Validate hand byte
+                detected_hand = None
+                if hand_value == Hand.LEFT.value:
+                    logger.info(f"Detected left hand on {port}")
+                    detected_hand = Hand.LEFT
+                elif hand_value == Hand.RIGHT.value:
+                    logger.info(f"Detected right hand on {port}")
+                    detected_hand = Hand.RIGHT
+                else:
+                    logger.warning(f"Invalid hand value: {hand_value} on {port}, retrying...")
+                    self.conn.close()
+                    time.sleep(0.5)
+                    continue
+                
+                # Step 7: Send confirmation
+                self.conn.write(bytes([HANDSHAKE_ACK]))
+                self.conn.flush()
+                
+                # Step 8: Clear buffers one final time
+                time.sleep(0.1)
+                self.conn.reset_input_buffer()
+                
+                self.port = port
+                logger.info(f"Successfully connected to {detected_hand.name} hand on {port}")
+                return True, detected_hand
+                
+            except serial.SerialException as e:
+                logger.error(f"Serial exception on {port} (attempt {attempt + 1}): {e}")
+                self.disconnect()
+
+                time.sleep(0.5)
+                
+            except Exception as e:
+                logger.error(f"Unexpected error on {port} (attempt {attempt + 1}): {e}")
+                self.disconnect()
+                time.sleep(0.5)
+        
+        logger.error(f"Failed to connect on {port} after {max_retries} attempts")
+        return False, None
+
+
+
     def disconnect(self):
         """Disconnect from device."""
         if self.conn:
@@ -137,7 +213,7 @@ class BaseSerialManager:
         except:
             return False
     
-    def _auto_connect(self) -> tuple[bool, Optional[Hand]]:
+    def _auto_connect(self, num_retries: int = 5) -> tuple[bool, Optional[Hand]]:
         """
         Auto-detect and connect to device by testing available ports.
         
@@ -154,7 +230,7 @@ class BaseSerialManager:
         
         for port in available_ports:
             if self._test_port(port):
-                success, detected_hand = self._connect(port)
+                success, detected_hand = self._connect(port, num_retries)
                 if success:
                     return success, detected_hand
             else:
@@ -162,7 +238,7 @@ class BaseSerialManager:
                 continue
         
         logger.warning("Could not auto-detect device")
-        return False, None, None
+        return False, None
     
     def stop(self):
         """Stop all communication threads."""
@@ -234,14 +310,14 @@ class LeftGloveSerialManager(BaseSerialManager):
         Returns:
             LeftGloveSerialManager or RightGloveSerialManager instance
         """
-        if hand == Hand.LEFT:
+        if hand == Hand.LEFT.value:
             return LeftGloveSerialManager(port=port, baud_rate=baud_rate)
-        elif hand == Hand.RIGHT:
+        elif hand == Hand.RIGHT.value:
             return RightGloveSerialManager(port=port, baud_rate=baud_rate)
         else:
-            raise ValueError(f"Invalid hand: {hand}")
+            raise ValueError(f"Invalid hand: {hand.name}")
     
-    def connect(self) -> tuple[bool, Optional[Hand], Optional[Union['LeftGloveSerialManager', 'RightGloveSerialManager']]]:
+    def connect(self, num_retries: int = 5) -> tuple[bool, Optional[Hand], Optional[Union['LeftGloveSerialManager', 'RightGloveSerialManager']]]:
         """
         Connect to glove controller. If the wrong hand is detected, returns
         a new manager instance for the correct hand with the connection transferred.
@@ -258,6 +334,8 @@ class LeftGloveSerialManager(BaseSerialManager):
             success, detected_hand = self._connect(self.port)
         else:
             success, detected_hand = self._auto_connect()
+        
+        print(f"Success: {success}, Detected hand: {detected_hand}")
         
         if not success:
             return False, None, None
@@ -277,16 +355,16 @@ class LeftGloveSerialManager(BaseSerialManager):
             # Clear our connection so we don't close it
             self.conn = None
             # Start the correct manager
-            correct_manager.start()
+            correct_manager._start()
             return True, detected_hand, correct_manager
         
         # Correct hand detected, update self.hand and start
         self.hand = detected_hand
-        self.start()
+        self._start()
         return True, detected_hand, None
     
     
-    def start(self):
+    def _start(self):
         """
         Start all communication threads.
 
@@ -299,6 +377,24 @@ class LeftGloveSerialManager(BaseSerialManager):
         if self._running or not self.conn:
             return
         
+        # Going through calibration sequence
+        logger.info(f"Starting {self.hand}-hand glove controller")
+
+        # listen for welcome sound
+        while self.conn.in_waiting == 0:
+            time.sleep(0.1)
+        welcome_sound = self.conn.read(1)
+        if welcome_sound == VoiceCommand.WELCOME_MUSIC.value:
+            logger.info(f"Welcome sound received from {self.hand}-hand glove controller")
+        else:
+            logger.warning(f"No welcome sound received from {self.hand}-hand glove controller")
+            return
+        
+        # listen for mode select buttons
+        # while self.conn.in_waiting == 0:
+
+
+
         if self.conn.in_waiting > 0:
             # Read the first byte in stream to get the mode info (consumes it)
             mode_bytes = self.conn.read(1)
@@ -342,6 +438,7 @@ class LeftGloveSerialManager(BaseSerialManager):
         
         logger.info("Glove serial manager stopped")
     
+
     def handle_line_rx(self, line: bytes):
         """
         line = bytes message like: b'L 0 3' in the format of [hand, sensorValue, sensorNumber]
@@ -357,11 +454,11 @@ class LeftGloveSerialManager(BaseSerialManager):
                 self.hand = instruction.hand
                 return None        
 
-            if instruction.sensorValue == SensorValue.Pressed: # we can use this to then map to cv calls to assign a note and play it
+            if instruction.sensorValue == SensorValue.Pressed.value: # we can use this to then map to cv calls to assign a note and play it
                 print(f"[{instruction.hand}] Sensor {instruction.sensorNumber} PRESSED") #instead of just printing out
                 
 
-            elif instruction.sensorValue == SensorValue.Released: # this we can use to map to a note and turn it off
+            elif instruction.sensorValue == SensorValue.Released.value: # this we can use to map to a note and turn it off
                 print(f"[{instruction.hand}] Sensor {instruction.sensorNumber} RELEASED") #instead of just printing it otu
 
         elif self._play_mode == PlayingMode.LEARNING_MODE:
@@ -464,7 +561,7 @@ class RightGloveSerialManager(LeftGloveSerialManager):
         super().__init__(port, baud_rate)
         self.hand = Hand.RIGHT
     
-    def start(self):
+    def _start(self):
         """
         Start all communication threads.
 
@@ -474,7 +571,7 @@ class RightGloveSerialManager(LeftGloveSerialManager):
         If the glove only sends this byte once on startup, ensure it's
         available when start() is called.
         """
-        super().start()  # Call parent implementation
+        super()._start()  # Call parent implementation
 
 
 
@@ -495,10 +592,29 @@ def read_from_teensy(port, source_hand):
 
 
 
-class AudioProtocol:
+class AudioBoardManager:
     
-    def __init__(self, port: str = 'Teensy MIDI/Audio'):
-        self.out = mido.open_output(port)
+    def __init__(self, port: str = None):
+        """
+        Initialize audio board manager.
+        
+        Args:
+            port: Serial port for audio board (None for auto-detect)
+        """
+        # TODO: handshake with audio board?
+        logger.info(f"Initializing audio board manager on port: {port}")
+        if port:
+            self.port = port
+        else:
+            available_ports = mido.get_output_names()
+            logger.info(f"Available audio ports: {available_ports}")
+            if len(available_ports) == 0:
+                raise ValueError("No audio ports found")
+            self.port = available_ports[0]
+
+
+        self.out = mido.open_output(self.port)
+        logger.info(f"Audio board manager initialized on port: {self.port}")
 
     def note_on(self, note: int, velocity: int = 100):
         #if (note < 60): return #values less than 60 are reserved for voice commands
