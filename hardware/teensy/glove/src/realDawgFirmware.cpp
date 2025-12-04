@@ -1,3 +1,6 @@
+// TODO: please for the love of god put the functions somewhere else
+
+
 #include <Arduino.h>
 #include <serial_commands.h>
 #include <Wire.h>
@@ -6,6 +9,8 @@
 
 // I'm a floo flammer homie all these chains on my neck I need two hammers homie
 
+
+
 /**
  * Working toward putting setups for both modes in here - freeplay and learning.
  * Calls proper calibration script, as well as finger press checking function.
@@ -13,7 +18,7 @@
 
 // Setting Type for the hand: *must manually changed before uploading to each hand*
 // IF LEFT HAND:
-#define TEENSY_HAND Hand::Left
+#define TEENSY_HAND Hand::Right
 
 // IF RIGHT HAND
 //#define TEENSY_HAND Hand::Right
@@ -109,7 +114,7 @@ void modeButtonISR() {
  * Calibrates all velostat sensors based on 3 levels of pressure: open, soft press, hard press
  * Sets the baseline values for each velostat sensor based on calibration algorithm.
  */
-void calibrateVelostat(unsigned int SAMPLE_COUNT = 200, unsigned int SAMPLE_PERIOD = 50) {
+void calibrateVelostat(unsigned int SAMPLE_COUNT = 310, unsigned int SAMPLE_PERIOD = 25) {
 
   int open_means[NUM_VELOSTAT];
   int open_stdevs[NUM_VELOSTAT];
@@ -143,7 +148,7 @@ void calibrateVelostat(unsigned int SAMPLE_COUNT = 200, unsigned int SAMPLE_PERI
     sum = 0;
     sumSq = 0;
 
-    for (int i = 0; i < SAMPLE_COUNT; i++) {
+    for (unsigned int i = 0; i < SAMPLE_COUNT; i++) {
       int reading = analogRead(VELOSTAT_PINS[finger]);
 
       sum += reading;
@@ -172,7 +177,7 @@ void calibrateVelostat(unsigned int SAMPLE_COUNT = 200, unsigned int SAMPLE_PERI
   //delay(2000);
   //Serial.println("Starting now...");
 
-  for (int finger = 0; finger < NUM_VELOSTAT; finger++) {
+  for (unsigned int finger = 0; finger < NUM_VELOSTAT; finger++) {
 
     //Serial.print("\nCalibrating finger ");
     //Serial.println(finger);
@@ -180,7 +185,7 @@ void calibrateVelostat(unsigned int SAMPLE_COUNT = 200, unsigned int SAMPLE_PERI
     sum = 0;
     sumSq = 0;
 
-    for (int i = 0; i < SAMPLE_COUNT; i++) {
+    for (unsigned int i = 0; i < SAMPLE_COUNT; i++) {
       int reading = analogRead(VELOSTAT_PINS[finger]);
 
       sum += reading;

@@ -1,4 +1,5 @@
 from serial_manager import LeftGloveSerialManager, RightGloveSerialManager, AudioBoardManager
+from teensy_connector import teensy_connect
 from protocols import PlayingMode, Hand, VoiceCommand
 from src.core.constants import LEFT_PORT, RIGHT_PORT, SERIAL_BAUD_RATE
 import time
@@ -10,45 +11,29 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 # MAY NEED THREADSAFETY
 
+
 def teensy_connect():
-    # Clear in case trying again
-    #it's alwasy gonna be left_glove
+  audio_board = AudioBoardManager()
 
+  glove_1 = LeftGloveSerialManager(baud_rate=SERIAL_BAUD_RATE)
+  glove_2 = LeftGloveSerialManager(baud_rate=SERIAL_BAUD_RATE)
 
-    # result = audio_board.connect(exclude_ports=[LEFT_PORT, RIGHT_PORT]) no connect method for audioboard
+  result_1, hand_1, glove_1 = glove_1.connect(num_retries=10)
+  result_2, hand_2, glove_2 = glove_2.connect(num_retries=10)
 
-    # Initialize and connect to the glove
+  if not result_1 or not result_2:
+    raise ValueError("Failed to connect to gloves")
 
-    right_glove = None
-    left_glove = None
-    audio_board = None
+  if hand_1 == Hand.LEFT and hand_2 == Hand.RIGHT:
+    glove_left = glove_1
+    glove_right = glove_2
+  elif hand_1 == Hand.RIGHT and hand_2 == Hand.LEFT:
+    glove_left = glove_2
+    glove_right = glove_1
+  else:
+    raise ValueError("Invalid hands")
 
-    left_glove = LeftGloveSerialManager(baud_rate=SERIAL_BAUD_RATE, port = 'COM10')
-    audio_board = AudioBoardManager()
-    print("Initialized the glove.")
-
-    
-
-    success, hand, left_glove = left_glove.connect(num_retries=10)
-    
- 
-
-    if hand == Hand.RIGHT:
-      right_glove = left_glove
-      left_glove = None
-
-
-    if not success:
-      # Try to connect to the glove
-      print("Could not connect to serial port")
-      return False
-
-    # Check if the glove is the correct hand (if applicable)
-    if num_gloves == 2 and right_glove.hand == Hand.LEFT:
-        return False  # Example condition for hand mismatch
-    
-    return left_glove, right_glove, audio_board
-
+  return glove_left, glove_right, audio_board
 
 
 if __name__ == "__main__":
