@@ -63,7 +63,7 @@ const int NUM_HAPTICS = 7;
 const int HAPTIC_PINS[NUM_HAPTICS] = {2, 1, 0, 6, 5, 4, 3};
 
 // RIGHT PINS:
-//const int HAPTIC_PINS[NUM_HAPTICS] = {5, 6, 0, 1, 2,4, 3};
+//const int HAPTIC_PINS[NUM_HAPTICS] = {4, 5, 6, 0, 1, 3, 2};
 
 // TCA MUX ADDRESS
 #define TCAADDR 0x77
@@ -461,7 +461,7 @@ void setup() {
         // wait adequate time for user to press button, detect how many times it was pressed 
         // in that window of time, and set mode accordingly
 
-        delay(200); // not needed???
+        //delay(200); // not needed???
 
         int modePressCount = buttonPressCount(5000, BUTTON_MODE); // 5 second window to press button
         if(modePressCount == 1) {
