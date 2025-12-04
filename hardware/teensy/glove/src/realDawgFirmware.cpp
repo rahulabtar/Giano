@@ -365,21 +365,62 @@ void setup() {
 
     // Step 1: Initialize Serial Communication
     Serial.begin(115200); // for raspi <-> communication via USB
+    
     Wire.begin();
     delay(100); // just a buffer delay
 
-    // Step 1.5: Send confirmation byte to RasPi of which hand this is -
-    // Python will use this to dynamically assign the ports and retain for rest of time
-    while (!Serial.availableForWrite()) {
-      delay(10); // small delay to ensure proper transmission
+    
+    // ========== ROBUST HANDSHAKE PROTOCOL ==========
+    // Step 1: Clear any stale data in buffer
+    while(Serial.available()) {
+      Serial.read();
     }
+    
+    // Step 2: Wait for handshake request (specific byte: 0xAA)
+    const uint8_t HANDSHAKE_REQUEST = 0xAA;
+    const uint8_t HANDSHAKE_ACK = 0x55;
+    
+    Serial.setTimeout(100);  // 100ms timeout for each read attempt
+    
+    while (true) {
+      if (Serial.available() > 0) {
+        uint8_t receivedByte = Serial.read();
+        
+        if (receivedByte == HANDSHAKE_REQUEST) {
+            // Step 3: Send handshake acknowledgment
+            Serial.write(HANDSHAKE_ACK);
+            delay(10);
+            
+            // Step 4: Send hand identifier
+            Serial.write(static_cast<uint8_t>(TEENSY_HAND));
+            delay(10);
+            
+            // Step 5: Wait for confirmation from Pi
+            unsigned long startWait = millis();
+            while (millis() - startWait < 1000) {  // 1 second timeout
+            if (Serial.available() > 0) {
+                uint8_t confirm = Serial.read();
+                if (confirm == HANDSHAKE_ACK) {
+                // Connection established successfully
+                break;
+                }
+            }
+            delay(10);
+          }
+          break;  // Exit handshake loop
+        }
+      }
+      delay(50);  // Small delay between handshake attempts
+    }
+    
+    // Clear buffers after successful handshake
+    while(Serial.available()) {
+      Serial.read();
+    }
+    delay(50);
 
-    Serial.paritytype()
-
-    if (Serial.availableForWrite())
-      Serial.write(static_cast<uint8_t>(TEENSY_HAND));
-
-    delay(10);
+    // ========== END HANDSHAKE PROTOCOL ==========
+    
     // BOOTUP SOUND
     Serial.write(static_cast<uint8_t>(VoiceCommands::WELCOME_MUSIC));
     delay(5000);
@@ -470,7 +511,7 @@ void setup() {
 
     Serial.write(static_cast<uint8_t>(VoiceCommands::HOW_TO_CHANGE_MODE));
     delay(5500);
-    Serial.write(static_cast<uint8_t>(VoiceCommands::HOW_TO_CHANGE_SONG));
+    Serial.write(static_cast<uint8_t>(VoiceCommands::HOW_TO_RESET_SONG));
     delay(5500);
 
     // final confirmation message to python - this cues it to play out 
