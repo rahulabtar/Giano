@@ -23,7 +23,10 @@ const int BUTTON_MODE = 10;
 const int BUTTON_SONG = 11; 
 
 // Global variable for setting mode - default to freeplay mode
-bool gFreeplayMode = true;
+volatile bool gFreeplayMode = true;
+
+// Global variable for changing mode- FLAG TO CHECK IF MODE TOGGLE REQUESTED
+volatile bool gModeToggleRequested = false;
 
 // VELOSTAT SETUP VARIABLES
 // number of velostat sensors
@@ -89,6 +92,16 @@ void tcaSelect(uint8_t i) {
   Wire.write(1 << i);
   Wire.endTransmission();
 }
+
+/**
+ * INTERRUPT SERVICE PROTOCOL FUNCTION
+ * Sets flag of toggle mode requested to true
+ */
+void modeButtonISR() {
+    gFreeplayMode = !gFreeplayMode;
+    gModeToggleRequested = true;
+}
+
 
 /**
  * Velostat Calibration Function
@@ -519,6 +532,17 @@ void setup() {
     Serial.write(static_cast<uint8_t>(VoiceCommands::HOW_TO_RESET_SONG));
     delay(5500);
 
+
+    //SETUP INTERRUPT FOR LEFT HAND SWITCHING MODE BUTTON
+    if (TEENSY_HAND == Hand::Left) {
+      attachInterrupt(
+        digitalPinToInterrupt(BUTTON_MODE),
+        modeButtonISR,
+        FALLING
+      );
+    }
+
+
     // final confirmation message to python - this cues it to play out 
     // final message on audio hat and then clear its input buffer or whatever needs to be done
     Serial.write(static_cast<uint8_t>(VoiceCommands::FLUSH));
@@ -528,6 +552,36 @@ void setup() {
 void loop() {
     // NEED TO INTEGRATE A BUTTON INTERRUPT: IF AT ANY POINT THE MODE BUTTON IS PRESSED,
     // RETURN TO SETUP LOGIC TO CHANGE MODES??? 
+
+
+  if (gModeToggleRequested) { // THIS WILL ONLY BE CALLED ON LEFT HAND
+
+        noInterrupts();                    
+        gModeToggleRequested = false;
+        bool currentMode = gFreeplayMode;
+        interrupts();
+
+        // send new mode to python to assign to other gloves
+        Serial.write(static_cast<uint8_t>(currentMode));
+        delay(500); // MIGHT NEED TO CHANGE THIS TO ALLOW OTHER GLOVE TIME TO UPDATE
+
+        // If we JUST switched into LEARNING MODE, run song selection
+        if (!currentMode) {
+
+            if (TEENSY_HAND == Hand::Left) {
+
+                Serial.write(static_cast<uint8_t>(VoiceCommands::SELECT_SONG));
+                delay(7500);
+
+                int songPressCount = buttonPressCount(6000, BUTTON_SONG);
+                Serial.write(static_cast<uint8_t>(songPressCount));
+            }
+        }
+
+        // If we switched back to FREEPLAY, just comtinue to main loop
+    }
+
+
 
     // now, depending on the mode, call the proper logic.
     // if in freeplay mode, call finger press checking function because thats all we need 
