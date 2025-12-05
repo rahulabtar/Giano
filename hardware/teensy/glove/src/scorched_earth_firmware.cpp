@@ -9,7 +9,7 @@ const int NUM_VELOSTAT = 5;
 
 //LEFT PINS:
 const int VELOSTAT_PINS[NUM_VELOSTAT] = {14, 18, 19, 21, 20}; 
-
+int maxPress[NUM_VELOSTAT];
 
 // set default state of pressed vs unpressed to be unpressed
 bool gPressed = false; 
@@ -25,7 +25,7 @@ const int ADC_BITS = 12;
  * Calibrates all velostat sensors based on 3 levels of pressure: open, soft press, hard press
  * Sets the baseline values for each velostat sensor based on calibration algorithm.
  */
-void calibrateVelostat(unsigned int SAMPLE_COUNT = 200, unsigned int SAMPLE_PERIOD = 50) {
+void calibrateVelostat(unsigned int SAMPLE_COUNT = 150, unsigned int SAMPLE_PERIOD = 10) {
 
   int open_means[NUM_VELOSTAT];
   int open_stdevs[NUM_VELOSTAT];
@@ -39,18 +39,18 @@ void calibrateVelostat(unsigned int SAMPLE_COUNT = 200, unsigned int SAMPLE_PERI
   float mean; 
   float stdev; 
 
-  Serial.write(static_cast<uint8_t>(VoiceCommands::CALIB_VELO_NO_PRESS));
-  delay(5500);
-  Serial.write(static_cast<uint8_t>(VoiceCommands::CALIBRATING));
-  delay(2500);
-  Serial.write(static_cast<uint8_t>(VoiceCommands::CALIBRATE_SINE_WAVE));
-  delay(8500);
+  // Serial.write(static_cast<uint8_t>(VoiceCommands::CALIB_VELO_NO_PRESS));
+  // delay(5500);
+  // Serial.write(static_cast<uint8_t>(VoiceCommands::CALIBRATING));
+  // delay(2500);
+  // Serial.write(static_cast<uint8_t>(VoiceCommands::CALIBRATE_SINE_WAVE));
+  // delay(8500);
 
-  //Serial.println(" Velostat Calibration for Open ...");
-  //delay(1000); 
-  //Serial.println("Please make sure all fingers are open (no pressure) Scrunch hands in and out");
-  //delay(2000);
-  //Serial.println("Starting now...");
+  Serial.println(" Velostat Calibration for Open ...");
+  delay(1000); 
+  Serial.println("Please make sure all fingers are open (no pressure) Scrunch hands in and out");
+  delay(2000);
+  Serial.println("Starting now...");
 
   for (int finger = 0; finger < NUM_VELOSTAT; finger++) {
 
@@ -76,18 +76,18 @@ void calibrateVelostat(unsigned int SAMPLE_COUNT = 200, unsigned int SAMPLE_PERI
     open_stdevs[finger] = stdev;
   }
 
-  delay(200);
-  Serial.write(static_cast<uint8_t>(VoiceCommands::CALIB_SOFT_PRESS));
-  delay(5500);
-  Serial.write(static_cast<uint8_t>(VoiceCommands::CALIBRATING));
-  delay(2500);
-  Serial.write(static_cast<uint8_t>(VoiceCommands::CALIBRATE_SINE_WAVE));
-  delay(8500);
-  //Serial.println(" Velostat Calibration for closed (light press)...");
-  //delay(1000); 
-  //Serial.println("Please hold all fingertips against surface lightly, like you are petting a cat :D");
-  //delay(2000);
-  //Serial.println("Starting now...");
+  // delay(200);
+  // Serial.write(static_cast<uint8_t>(VoiceCommands::CALIB_SOFT_PRESS));
+  // delay(5500);
+  // Serial.write(static_cast<uint8_t>(VoiceCommands::CALIBRATING));
+  // delay(2500);
+  // Serial.write(static_cast<uint8_t>(VoiceCommands::CALIBRATE_SINE_WAVE));
+  // delay(8500);
+  Serial.println(" Velostat Calibration for closed (light press)...");
+  delay(1000); 
+  Serial.println("Please hold all fingertips against surface lightly, like you are petting a cat :D");
+  delay(2000);
+  Serial.println("Starting now...");
 
   for (int finger = 0; finger < NUM_VELOSTAT; finger++) {
 
@@ -113,17 +113,17 @@ void calibrateVelostat(unsigned int SAMPLE_COUNT = 200, unsigned int SAMPLE_PERI
     soft_stdevs[finger] = stdev;
   }
 
-  Serial.write(static_cast<uint8_t>(VoiceCommands::CALIB_HARD_PRESS));
-  delay(5500);
-  Serial.write(static_cast<uint8_t>(VoiceCommands::CALIBRATING));
-  delay(2500);
-  Serial.write(static_cast<uint8_t>(VoiceCommands::CALIBRATE_SINE_WAVE));
-  delay(8500);
-  //Serial.println(" Velostat Calibration for closed (hard press)...");
-  //delay(1000);
-  //Serial.println("Please hold all fingertips against surface hard :D");
-  //delay(2000);
-  //Serial.println("Starting now...");
+  // Serial.write(static_cast<uint8_t>(VoiceCommands::CALIB_HARD_PRESS));
+  // delay(5500);
+  // Serial.write(static_cast<uint8_t>(VoiceCommands::CALIBRATING));
+  // delay(2500);
+  // Serial.write(static_cast<uint8_t>(VoiceCommands::CALIBRATE_SINE_WAVE));
+  // delay(8500);
+  Serial.println(" Velostat Calibration for closed (hard press)...");
+  delay(1000);
+  Serial.println("Please hold all fingertips against surface hard :D");
+  delay(2000);
+  Serial.println("Starting now...");
 
   for (int finger = 0; finger < NUM_VELOSTAT; finger++) {
 
@@ -150,7 +150,6 @@ void calibrateVelostat(unsigned int SAMPLE_COUNT = 200, unsigned int SAMPLE_PERI
   }
 
   // implementing calibration algorithm now 
-  int maxPress[NUM_VELOSTAT];
   for (int finger = 0; finger < NUM_VELOSTAT; finger++){
   gBaseline[finger] = open_means[finger] + 2 * open_stdevs[finger];
   maxPress[finger] = hard_means[finger] + hard_stdevs[finger];
@@ -158,11 +157,13 @@ void calibrateVelostat(unsigned int SAMPLE_COUNT = 200, unsigned int SAMPLE_PERI
   // TODO:  HOW DO WE EVEN ADDRESS THIS
   if (gBaseline[finger] >= maxPress[finger]) 
   {
-    Serial.write(static_cast<uint8_t>(VoiceCommands::CALIBRATION_FAILED));
+    // Serial.write(static_cast<uint8_t>(VoiceCommands::CALIBRATION_FAILED));
     delay(2500);
     calibrateVelostat();
+    Serial.println("Calibration failed, restarting...");
   } else {
-    Serial.write(static_cast<uint8_t>(VoiceCommands::CALIBRATION_SUCCESS));
+    // Serial.write(static_cast<uint8_t>(VoiceCommands::CALIBRATION_SUCCESS));
+    Serial.println("Calibration successful!");
     delay(2500);
     // Serial.println(finger);
     // Serial.print("Baseline: ");
@@ -170,9 +171,33 @@ void calibrateVelostat(unsigned int SAMPLE_COUNT = 200, unsigned int SAMPLE_PERI
     // Serial.print("Max Press: ");
     // Serial.println(maxPress[finger]);
   }
+
+  Serial.println("DEBUG: 1");
 }
+  Serial.println("DEBUG: 2");
 }
 
+
+int getVelocity(bool currentlyPressed, int raw, int fingerIndex){
+  int velocity = 0; //if it prints this something is wrong
+  Serial.println("Velocity reading: ");
+  if (currentlyPressed){  
+    velocity = map(raw, gBaseline[fingerIndex], maxPress[fingerIndex], 1, 127);
+    if(velocity > 127) {
+      velocity = 127;
+    }
+    if (velocity < 0) {
+      velocity = 0;
+    }
+
+    Serial.println(velocity);
+  }
+  else {
+    velocity = 0;
+    Serial.println(velocity);
+  }
+  return velocity;
+}
 
 /**
  * CHECK FINGER PRESS FUNCTION
@@ -191,9 +216,18 @@ void checkFingerPress() {
       //Serial1.println(i);     // send "note on" to receiver
     
       // SENDS TO RASPI
-      Serial.write(static_cast<uint8_t>(TEENSY_HAND));
-      Serial.write(static_cast<uint8_t>(SensorValue::Pressed));
-      Serial.write(static_cast<uint8_t>(i));     // send "note on" to receiver
+      // Serial.write(static_cast<uint8_t>(TEENSY_HAND));
+      // Serial.write(static_cast<uint8_t>(SensorValue::PRESSED));
+      // Serial.write(static_cast<uint8_t>(i));     // send "note on" to receiver
+      // Serial.write(static_cast<uint8_t>(getVelocity(currentlyPressed, raw, i))); // send velocity value
+
+      Serial.print("Press - Hand: ");
+      Serial.print(static_cast<int>(TEENSY_HAND));
+      Serial.print(", Finger: ");
+      Serial.print(i);
+      Serial.print(", Velocity: ");
+      Serial.println(getVelocity(currentlyPressed, raw, i));
+
 
       gSensorState[i] = true;  // remember it's pressed
     } 
@@ -202,18 +236,26 @@ void checkFingerPress() {
       Serial1.print("SensorReleased ");
       Serial1.println(i);     // send "note off" to receiver
 
-      // SENDING IT TO RASPI
-      Serial.write(static_cast<uint8_t>(TEENSY_HAND));
-      Serial.write(static_cast<uint8_t>(SensorValue::Released));
-      Serial.write(static_cast<uint8_t>(i));     // send "note off" to receiver
+      // // SENDING IT TO RASPI
+      // Serial.write(static_cast<uint8_t>(TEENSY_HAND));
+      // Serial.write(static_cast<uint8_t>(SensorValue::RELEASED));
+      // Serial.write(static_cast<uint8_t>(i));     // send "note off" to receiver
+      // Serial.write(static_cast<uint8_t>(0)); // velocity 0 on release
+
+
+      Serial.print("Release - Hand: ");
+      Serial.print(static_cast<int>(TEENSY_HAND));
+      Serial.print(", Finger: ");
+      Serial.print(i);
+      Serial.print(", Velocity: ");
+      Serial.println(getVelocity(currentlyPressed, raw, i));
+
 
       gSensorState[i] = false; // update state
     }
 
     // if pressed and already marked as pressed, do nothing
   }
-
-  delay(50); // optional debounce/stability
 }
 
 /**
@@ -224,11 +266,24 @@ void setup() {
     // Step 1: Initialize Serial Communication
     Serial.begin(115200); // for raspi <-> communication via USB
     delay(100); // just a buffer delay
+    Serial.println("Scorched Earth Firmware Starting...");
     calibrateVelostat(); // velostat and flex sensor
+    Serial.println("DEBUG: EXITING CALIBRATION");
 
 }
 
+int i = 0; 
 void loop() {
+    static unsigned long lastPrint = 0;
+    static int i = 0;
+    
     checkFingerPress();
+
+    if (millis() - lastPrint >= 200) {  // print every 200ms
+        Serial.print("Counter Loop: ");
+        Serial.println(i);
+        i++;
+        lastPrint = millis();
+    }
 }
 
