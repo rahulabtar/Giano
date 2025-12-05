@@ -29,6 +29,38 @@ const int ADC_BITS = 12;
 #define FLEX_WRIST 22
 
 
+// HAPTIC SETUP VARIABLES
+const int NUM_HAPTICS = 7; 
+// SET THUMB at index 0, Pinky at 4, left wrist 5, right wrist 6
+// ie for right hand indexes 0-4 are reverse, 5 and 6 stay the same
+// THIS IS ACTUALLY SETUP FOR SELECT LINES
+
+// LEFT PINS:
+const int HAPTIC_PINS[NUM_HAPTICS] = {2, 1, 0, 6, 5, 4, 3};
+
+//Right Pins
+//const int HAPTIC_PINS[NUM_HAPTICS] = {3, 4, 5, 6, 0, 1, };
+
+// RIGHT PINS:
+//const int HAPTIC_PINS[NUM_HAPTICS] = {4, 5, 6, 0, 1, 3, 2};
+
+// TCA MUX ADDRESS
+#define TCAADDR 0x77
+// INSTANTIATE HAPTIC DRIVER OBJECT
+Adafruit_DRV2605 drv;
+
+
+/**
+ * TCA SELECT LINE FUNCTION
+ * Selects the proper line on the TCA MUX for haptic motor control
+ */
+void tcaSelect(uint8_t i) {
+  if (i > 7) return;  
+  Wire1.beginTransmission(TCAADDR);
+  Wire1.write(1 << i);
+  Wire1.endTransmission();
+}
+
 /**
  * Velostat Calibration Function
  * Calibrates all velostat sensors based on 3 levels of pressure: open, soft press, hard press
@@ -187,6 +219,53 @@ void calibrateVelostat(unsigned int SAMPLE_COUNT = 150, unsigned int SAMPLE_PERI
 }
 
 
+
+/**
+ * Haptics Calibration Function
+ * Calibrates all haptic motors by initializing them via the TCA MUX
+ * and playing a test effect to ensure they are working.
+ */
+void calibrateHaptics() {
+  Serial.println("Starting Haptics Calibration...");
+
+  for (int i = 0; i < NUM_HAPTICS; i++) {
+    Serial.print("Calibrating Haptic Motor at MUX line ");
+    Serial.println(i);
+
+    tcaSelect(HAPTIC_PINS[i]);
+    delay(100); // give I2C time to switch
+    
+    if (!drv.begin(&Wire1)) {
+      Serial.print("Failed to initialize haptic motor at MUX line ");
+      Serial.println(i);
+      continue;
+    }
+    
+    Serial.println("  - DRV2605 initialized");
+    drv.selectLibrary(1); // Use library 1 for better effects
+    drv.setMode(DRV2605_MODE_INTTRIG);
+    
+    // Clear any previous waveforms
+    drv.setWaveform(0, 0);
+    drv.setWaveform(1, 0);
+    
+    // Play a test effect to ensure motor is working
+    drv.setWaveform(0, 47); // strong click effect
+    drv.setWaveform(1, 0);
+    drv.go();
+    Serial.println("  - Effect triggered");
+    
+    delay(100); // wait longer for effect to complete and be audible
+
+    Serial.print("Haptic Motor at MUX line ");
+    Serial.print(i);
+    Serial.println(" calibrated successfully.");
+  }
+
+  Serial.println("Haptics Calibration Complete.");
+}
+
+
 int getVelocity(bool currentlyPressed, int raw, int fingerIndex){
   int velocity = 0; //if it prints this something is wrong
   Serial.println("Velocity reading: ");
@@ -263,15 +342,17 @@ void setup() {
 
     // Step 1: Initialize Serial Communication
     Serial.begin(115200); // for raspi <-> communication via USB
+    Wire1.begin();
     delay(100); // just a buffer delay
     Serial.println("Scorched Earth Firmware Starting...");
-    calibrateVelostat(); // velostat and flex sensor
+    //calibrateVelostat(); // velostat and flex sensor
     Serial.println("DEBUG: EXITING CALIBRATION");
 
     delay(100);
 
     Serial.println("DEBUG: ENTERING HAPTIC CALIBRATION");
     calibrateHaptics();
+    Serial.println("DEBUG: EXITING HAPTICS CALIBRATION");
 
 }
 
