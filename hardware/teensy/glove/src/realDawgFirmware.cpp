@@ -1,43 +1,42 @@
-// TODO: please for the love of god put the functions somewhere else
-
-
 #include <Arduino.h>
 #include <serial_commands.h>
 #include <Wire.h>
 #include "Adafruit_DRV2605.h"
 
+// LEFT HAND VARIABLES: UNCOMMENT THESE ALL FOR LEFT HAND
 
-// I'm a floo flammer homie all these chains on my neck I need two hammers homie
+#define TEENSY_HAND Hand::Left
+const int VELOSTAT_PINS[NUM_VELOSTAT] = {14, 18, 19, 20, 21}; 
+const int HAPTIC_PINS[NUM_HAPTICS] = {2, 1, 0, 6, 5, 4, 3};
 
+// RIGHT HAND VARIABLES: UNCOMMENT THESE ALL FOR RIGHT HAND
+
+//#define TEENSY_HAND Hand::Right
+//const int VELOSTAT_PINS[NUM_VELOSTAT] = {21, 20, 19, 18, 14}; 
+// const int HAPTIC_PINS[NUM_HAPTICS] = {5, 6, 0, 1, 2, 4, 3};
 
 // VELOSTAT SETUP VARIABLES
-// number of velostat sensors
-const int NUM_VELOSTAT = 5;
+const int PRESS_THRESHOLD = 45;   // threshold to register a press
+const int RELEASE_THRESHOLD = 25; // threshold to register a release (hysteresis) needs a lesser value 
+const int NUM_VELOSTAT = 5; 
+int maxPress[NUM_VELOSTAT];
+// set default state of pressed vs unpressed to be unpressed
+bool gPressed = false; 
+// array to hold state of each sensor (pressed or unpressed)
+bool gSensorState[NUM_VELOSTAT] = {false, false, false, false, false}; 
+int gBaseline[NUM_VELOSTAT];
+const int ADC_BITS = 12;
 
 
-/**
- * Working toward putting setups for both modes in here - freeplay and learning.
- * Calls proper calibration script, as well as finger press checking function.
- */
+// FLEX SETUP VARIABLES
+#define FLEX_WRIST 22
 
-// Setting Type for the hand: *must manually changed before uploading to each hand*
+// HAPTIC SETUP VARIABLES
+const int NUM_HAPTICS = 7; 
+#define TCAADDR 0x77
+Adafruit_DRV2605 drv;
 
-// IF LEFT HAND
-#define TEENSY_HAND Hand::Left
-
-//LEFT PINS:
-const int gVELOSTAT_PINS[NUM_VELOSTAT] = {14, 18, 19, 21, 20}; 
-
-
-// IF RIGHT HAND
-//#define TEENSY_HAND Hand::Right
-
-// RIGHT PINS:
-//const int gVELOSTAT_PINS[NUM_VELOSTAT] = {20, 21, 19, 18, 14}; 
-
-
-
-// Set button pins for left glove - CHECK THESE PLEASEEEE!!!!
+// BUTTON SETUP FOR LEFT GLOVE
 // LEFTMOST BUTTON CONTROLS SONG, RIGHT CONTROLS MODE
 const int BUTTON_MODE = 10; 
 const int BUTTON_SONG = 11; 
@@ -47,55 +46,11 @@ volatile bool gFreeplayMode = true;
 
 // Global variable for changing mode- FLAG TO CHECK IF MODE TOGGLE REQUESTED
 volatile bool gModeToggleRequested = false;
-; 
-// array of size of # of velostat sensors, sets their pins - ADD THIS
-// thumb index 0, pinky at 4. ON LEFT GLOVE: PINKY IS LEFTMOST CONNECTOR
-// ON RIGHT GLOVE: THUMB IS LEFTMOST CONNECTOR.
-// these numbers swap order for right glove.
-
-
-
-
-// set default state of pressed vs unpressed to be unpressed
-bool gPressed = false; 
-
-// array to hold state of each sensor (pressed or unpressed)
-bool gSensorState[NUM_VELOSTAT] = {false, false, false, false, false}; 
-// threshold for determining pressed vs unpressed - CAN BE ADJUSTED
-const int THRESHOLD = 45; 
-// to collect baseline readings of velostat sensors
-int gBaseline[NUM_VELOSTAT];
-// ADC bits for analog read resolution
-const int ADC_BITS = 12;
-
-// FLEX SETUP VARIABLES
-#define FLEX_WRIST 22
-
-// HAPTIC SETUP VARIABLES
-const int NUM_HAPTICS = 7; 
-// SET THUMB at index 0, Pinky at 4, left wrist 5, right wrist 6
-// ie for right hand indexes 0-4 are reverse, 5 and 6 stay the same
-// THIS IS ACTUALLY SETUP FOR SELECT LINES
-
-// LEFT PINS:
-const int HAPTIC_PINS[NUM_HAPTICS] = {2, 1, 0, 6, 5, 4, 3};
-
-// RIGHT PINS:
-//const int HAPTIC_PINS[NUM_HAPTICS] = {4, 5, 6, 0, 1, 3, 2};
-
-// TCA MUX ADDRESS
-#define TCAADDR 0x77
-// INSTANTIATE HAPTIC DRIVER OBJECT
-Adafruit_DRV2605 drv;
-
-
-// LEARNING MODE SETUP VARIABLES AND DATA SETS
 
 /**
  * HELPER FUNCTIONS
  * Various helper functions for calibration, tca select line function, checking finger presses, etc.
  */
-
 
 /**
  * TCA SELECT LINE FUNCTION
@@ -103,9 +58,9 @@ Adafruit_DRV2605 drv;
  */
 void tcaSelect(uint8_t i) {
   if (i > 7) return;  
-  Wire.beginTransmission(TCAADDR);
-  Wire.write(1 << i);
-  Wire.endTransmission();
+  Wire1.beginTransmission(TCAADDR);
+  Wire1.write(1 << i);
+  Wire1.endTransmission();
 }
 
 /**
@@ -123,7 +78,7 @@ void modeButtonISR() {
  * Calibrates all velostat sensors based on 3 levels of pressure: open, soft press, hard press
  * Sets the baseline values for each velostat sensor based on calibration algorithm.
  */
-void calibrateVelostat(unsigned int SAMPLE_COUNT = 310, unsigned int SAMPLE_PERIOD = 25) {
+void calibrateVelostat(unsigned int SAMPLE_COUNT = 150, unsigned int SAMPLE_PERIOD = 10) {
 
   int open_means[NUM_VELOSTAT];
   int open_stdevs[NUM_VELOSTAT];
@@ -142,12 +97,13 @@ void calibrateVelostat(unsigned int SAMPLE_COUNT = 310, unsigned int SAMPLE_PERI
   Serial.write(static_cast<uint8_t>(VoiceCommands::CALIBRATING));
   delay(2500);
   Serial.write(static_cast<uint8_t>(VoiceCommands::CALIBRATE_SINE_WAVE));
+  delay(8500);
 
-  //Serial.println(" Velostat Calibration for Open ...");
-  //delay(1000); 
-  //Serial.println("Please make sure all fingers are open (no pressure) Scrunch hands in and out");
-  //delay(2000);
-  //Serial.println("Starting now...");
+  // Serial.println(" Velostat Calibration for Open ...");
+  // delay(1000); 
+  // Serial.println("Please make sure all fingers are open (no pressure) Scrunch hands in and out");
+  // delay(2000);
+  // Serial.println("Starting now...");
 
   for (int finger = 0; finger < NUM_VELOSTAT; finger++) {
 
@@ -157,8 +113,8 @@ void calibrateVelostat(unsigned int SAMPLE_COUNT = 310, unsigned int SAMPLE_PERI
     sum = 0;
     sumSq = 0;
 
-    for (unsigned int i = 0; i < SAMPLE_COUNT; i++) {
-      int reading = analogRead(gVELOSTAT_PINS[finger]);
+    for (int i = 0; i < SAMPLE_COUNT; i++) {
+      int reading = analogRead(VELOSTAT_PINS[finger]);
 
       sum += reading;
       sumSq += (long)reading * (long)reading;
@@ -179,14 +135,14 @@ void calibrateVelostat(unsigned int SAMPLE_COUNT = 310, unsigned int SAMPLE_PERI
   Serial.write(static_cast<uint8_t>(VoiceCommands::CALIBRATING));
   delay(2500);
   Serial.write(static_cast<uint8_t>(VoiceCommands::CALIBRATE_SINE_WAVE));
-  
-  //Serial.println(" Velostat Calibration for closed (light press)...");
-  //delay(1000); 
-  //Serial.println("Please hold all fingertips against surface lightly, like you are petting a cat :D");
-  //delay(2000);
-  //Serial.println("Starting now...");
+  delay(8500);
+  // Serial.println(" Velostat Calibration for closed (light press)...");
+  // delay(1000); 
+  // Serial.println("Please hold all fingertips against surface lightly, like you are petting a cat :D");
+  // delay(2000);
+  // Serial.println("Starting now...");
 
-  for (unsigned int finger = 0; finger < NUM_VELOSTAT; finger++) {
+  for (int finger = 0; finger < NUM_VELOSTAT; finger++) {
 
     //Serial.print("\nCalibrating finger ");
     //Serial.println(finger);
@@ -194,8 +150,8 @@ void calibrateVelostat(unsigned int SAMPLE_COUNT = 310, unsigned int SAMPLE_PERI
     sum = 0;
     sumSq = 0;
 
-    for (unsigned int i = 0; i < SAMPLE_COUNT; i++) {
-      int reading = analogRead(gVELOSTAT_PINS[finger]);
+    for (int i = 0; i < SAMPLE_COUNT; i++) {
+      int reading = analogRead(VELOSTAT_PINS[finger]);
 
       sum += reading;
       sumSq += (long)reading * (long)reading;
@@ -215,11 +171,12 @@ void calibrateVelostat(unsigned int SAMPLE_COUNT = 310, unsigned int SAMPLE_PERI
   Serial.write(static_cast<uint8_t>(VoiceCommands::CALIBRATING));
   delay(2500);
   Serial.write(static_cast<uint8_t>(VoiceCommands::CALIBRATE_SINE_WAVE));
-  //Serial.println(" Velostat Calibration for closed (hard press)...");
-  //delay(1000);
-  //Serial.println("Please hold all fingertips against surface hard :D");
-  //delay(2000);
-  //Serial.println("Starting now...");
+  delay(8500);
+  // Serial.println(" Velostat Calibration for closed (hard press)...");
+  // delay(1000);
+  // Serial.println("Please hold all fingertips against surface hard :D");
+  // delay(2000);
+  // Serial.println("Starting now...");
 
   for (int finger = 0; finger < NUM_VELOSTAT; finger++) {
 
@@ -230,7 +187,7 @@ void calibrateVelostat(unsigned int SAMPLE_COUNT = 310, unsigned int SAMPLE_PERI
     sumSq = 0;
 
     for (int i = 0; i < SAMPLE_COUNT; i++) {
-      int reading = analogRead(gVELOSTAT_PINS[finger]);
+      int reading = analogRead(VELOSTAT_PINS[finger]);
 
       sum += reading;
       sumSq += (long)reading * (long)reading;
@@ -246,19 +203,19 @@ void calibrateVelostat(unsigned int SAMPLE_COUNT = 310, unsigned int SAMPLE_PERI
   }
 
   // implementing calibration algorithm now 
-  int maxPress[NUM_VELOSTAT];
   for (int finger = 0; finger < NUM_VELOSTAT; finger++){
   gBaseline[finger] = open_means[finger] + 2 * open_stdevs[finger];
   maxPress[finger] = hard_means[finger] + hard_stdevs[finger];
 
-  // TODO:  HOW DO WE EVEN ADDRESS THIS
   if (gBaseline[finger] >= maxPress[finger]) 
   {
     Serial.write(static_cast<uint8_t>(VoiceCommands::CALIBRATION_FAILED));
     delay(2500);
     calibrateVelostat();
+    // Serial.println("Calibration failed, restarting...");
   } else {
     Serial.write(static_cast<uint8_t>(VoiceCommands::CALIBRATION_SUCCESS));
+    // Serial.println("Calibration successful!");
     delay(2500);
     // Serial.println(finger);
     // Serial.print("Baseline: ");
@@ -266,7 +223,10 @@ void calibrateVelostat(unsigned int SAMPLE_COUNT = 310, unsigned int SAMPLE_PERI
     // Serial.print("Max Press: ");
     // Serial.println(maxPress[finger]);
   }
+
+  // Serial.println("DEBUG: 1");
 }
+  // Serial.println("DEBUG: 2");
 }
 
 /**
@@ -275,32 +235,43 @@ void calibrateVelostat(unsigned int SAMPLE_COUNT = 310, unsigned int SAMPLE_PERI
  * and playing a test effect to ensure they are working.
  */
 void calibrateHaptics() {
-  //Serial.println("Starting Haptics Calibration...");
+  // Serial.println("Starting Haptics Calibration...");
 
   for (int i = 0; i < NUM_HAPTICS; i++) {
-    //Serial.print("Calibrating Haptic Motor at MUX line ");
-    //Serial.println(i);
+    // Serial.print("Calibrating Haptic Motor at MUX line ");
+    // Serial.println(i);
 
     tcaSelect(HAPTIC_PINS[i]);
-    if (!drv.begin()) {
-      //Serial.print("Failed to initialize haptic motor at MUX line ");
-      //Serial.println(i);
+    delay(100); // give I2C time to switch
+    
+    if (!drv.begin(&Wire1)) {
+      // Serial.print("Failed to initialize haptic motor at MUX line ");
+      // Serial.println(i);
       continue;
     }
+    
+    // Serial.println("  - DRV2605 initialized");
+    drv.selectLibrary(1); // Use library 1 for better effects
     drv.setMode(DRV2605_MODE_INTTRIG);
-
-    // Play a test effect to ensure motor is working - do we even need this
-    drv.setWaveform(0, 1); // simple click effect
+    
+    // Clear any previous waveforms
+    drv.setWaveform(0, 0);
+    drv.setWaveform(1, 0);
+    
+    // Play a test effect to ensure motor is working
+    drv.setWaveform(0, 47); // strong click effect
     drv.setWaveform(1, 0);
     drv.go();
-    delay(1000); // wait for effect to finish
+    // Serial.println("  - Effect triggered");
+    
+    delay(100); // wait longer for effect to complete and be audible
 
-    //Serial.print("Haptic Motor at MUX line ");
-    //Serial.print(i);
-    //Serial.println(" calibrated successfully.");
+    // Serial.print("Haptic Motor at MUX line ");
+    // Serial.print(i);
+    // Serial.println(" calibrated successfully.");
   }
 
-  //Serial.println("Haptics Calibration Complete.");
+  // Serial.println("Haptics Calibration Complete.");
 }
 
 /**
@@ -327,65 +298,131 @@ int buttonPressCount(unsigned long timeWindow, int buttonPin) {
     return count;
 }
 
+/**
+ *  GET VELOCITY FUNCTION RETURNS VELOCITY OF FINGER PRESS
+ */
+int getVelocity(bool currentlyPressed, int raw, int fingerIndex){
+  int velocity = 0; //if it prints this something is wrong
+  // Serial.println("Velocity reading: ");
+  if (currentlyPressed){  
+    velocity = map(raw, gBaseline[fingerIndex], maxPress[fingerIndex], 1, 127);
+    if(velocity > 127) {
+      velocity = 127;
+    }
+    if (velocity < 0) {
+      velocity = 0;
+    }
+
+    // Serial.println(velocity);
+  }
+  else {
+    velocity = 0;
+    // Serial.println(velocity);
+  }
+  return velocity;
+}
+
 
 /**
  * CHECK FINGER PRESS FUNCTION
  * Checks the state of each velostat sensor and sends press/release events to RasPi.
  * Primary call for freeplay mode, embedded call for learning mode.
  */
+
 void checkFingerPress() {
-  for (unsigned int i = 0; i < NUM_VELOSTAT; i++) {
-    int raw = analogRead(gVELOSTAT_PINS[i]);
-    
-    bool currentlyPressed = raw >= (gBaseline[i] + THRESHOLD);
+    unsigned long now = millis();
 
-    // transition: unpressed -> pressed
-    if (currentlyPressed && !gSensorState[i]) {
-      //Serial1.print("Sensor ");
-      //Serial1.println(i);     // send "note on" to receiver
-    
-      // SENDS TO RASPI
-      Serial.write(static_cast<uint8_t>(TEENSY_HAND));
-      Serial.write(static_cast<uint8_t>(SensorValue::PRESSED));
-      Serial.write(static_cast<uint8_t>(i));     // send "note on" to receiver
+    for (unsigned int i = 0; i < NUM_VELOSTAT; i++) {
+        int raw = analogRead(VELOSTAT_PINS[i]);
+        bool currentlyPressed = gSensorState[i]; // default: maintain previous state
 
-      gSensorState[i] = true;  // remember it's pressed
-    } 
-    // transition: pressed -> released
-    else if (!currentlyPressed && gSensorState[i]) {
-      Serial1.print("SensorReleased ");
-      Serial1.println(i);     // send "note off" to receiver
+        // Hysteresis logic
+        if (!gSensorState[i] && raw >= gBaseline[i] + PRESS_THRESHOLD) {
+            currentlyPressed = true; // transition: unpressed -> pressed
+        } 
+        else if (gSensorState[i] && raw <= gBaseline[i] + RELEASE_THRESHOLD) {
+            currentlyPressed = false; // transition: pressed -> released
+        }
 
-      // SENDING IT TO RASPI
-      Serial.write(static_cast<uint8_t>(TEENSY_HAND));
-      Serial.write(static_cast<uint8_t>(SensorValue::RELEASED));
-      Serial.write(static_cast<uint8_t>(i));     // send "note off" to receiver
+        // Only act on state change
+        if (currentlyPressed != gSensorState[i]) {
+            gSensorState[i] = currentlyPressed; // update state
 
-      gSensorState[i] = false; // update state
+            if (currentlyPressed) {
+                Serial.write(static_cast<uint8_t>(TEENSY_HAND));
+                Serial.write(static_cast<uint8_t>(i));
+                Serial.write(static_cast<uint8_t>(SensorValue::PRESSED));
+                Serial.write(static_cast<uint8_t>(getVelocity(true, raw, i)));
+                Serial.flush();
+
+
+                // Serial.print("Press - Hand: ");
+                // Serial.print(static_cast<int>(TEENSY_HAND));
+                // Serial.print(", Finger: ");
+                // Serial.print(i);
+                // Serial.print(", Velocity: ");
+                // Serial.println(getVelocity(true, raw, i));
+            } 
+            else {
+                Serial.write(static_cast<uint8_t>(TEENSY_HAND));
+                Serial.write(static_cast<uint8_t>(i));
+                Serial.write(static_cast<uint8_t>(SensorValue::RELEASED));
+                Serial.write(static_cast<uint8_t>(getVelocity(true, raw, i)));
+                Serial.flush();
+                // Serial.print("Release - Hand: ");
+                // Serial.print(static_cast<int>(TEENSY_HAND));
+                // Serial.print(", Finger: ");
+                // Serial.print(i);
+                // Serial.print(", Velocity: ");
+                // Serial.println(getVelocity(false, raw, i));
+            }
+        }
     }
-
-    // if pressed and already marked as pressed, do nothing
-  }
-
-  delay(50); // optional debounce/stability
+    // debounce delay
+    delay(50);
 }
 
 /**
- * Function to help guide finger presses in learning mode. 
- * Uses haptics to signal each finger and where it should press. 
+ * BUZZ MOTOR FUNCTION, allows us to long buzz the motor for debug.
  */
-void guideFingerPress() {
-    // Step 1: Get the set of finger instructions that need to happen
-
-    // Step 2: Apply it using haptics 
-
-    // Step 3: detect a finger press, when that happens send back to Raspi for 
-    // confirmation
-
+void buzzMotor(int sensorIndex) {
+  tcaSelect(sensorIndex);
+    delay(100); // give I2C time to switch
+    
+    if (!drv.begin(&Wire1)) {
+      continue;
+    }
+    
+    drv.selectLibrary(1); // Use library 1 for better effects
+    drv.setMode(DRV2605_MODE_INTTRIG);
+    
+    // Clear any previous waveforms
+    drv.setWaveform(0, 0);
+    drv.setWaveform(1, 0);
+    
+    // Play a test effect to ensure motor is working
+    drv.setWaveform(0, 47); // strong click effect
+    drv.setWaveform(1, 0);
+    drv.go();
+    // Serial.println("  - Effect triggered");
+    
+    delay(100); // wait longer for effect to complete and be audible
 }
 
 
+// /**
+//  * Function to help guide finger presses in learning mode. 
+//  * Uses haptics to signal each finger and where it should press. 
+//  */
+// void guideFingerPress() {
+//     // Step 1: Get the set of finger instructions that need to happen
 
+//     // Step 2: Apply it using haptics 
+
+//     // Step 3: detect a finger press, when that happens send back to Raspi for 
+//     // confirmation
+
+// }
 
 
 /**
@@ -395,7 +432,7 @@ void setup() {
 
     // Step 1: Initialize Serial and wait for USB enumeration
   Serial.begin(115200);
-  Wire.begin();
+  Wire1.begin();
   
   // Wait for USB CDC to be ready (crucial!)
   while (!Serial) {
@@ -477,12 +514,11 @@ void setup() {
   while (Serial.available()) {
     Serial.read();
   }
+
+  // CALIBRATE HAPTICS ON BOTH HANDS!! 
+  calibrateHaptics();
   
   // ========== NOW PROCEED WITH SETUP ==========
-
-
-    
-
     // Step 2: Initialize all necessary sensors/button components for setup logic
     // we only want buttons to work if on left hand
     if(TEENSY_HAND == Hand::Left) { 
@@ -518,8 +554,6 @@ void setup() {
         // wait adequate time for user to press button, detect how many times it was pressed 
         // in that window of time, and set mode accordingly
 
-        //delay(200); // not needed???
-
         int modePressCount = buttonPressCount(5000, BUTTON_MODE); // 5 second window to press button
         
         if(modePressCount == 1) {
@@ -544,20 +578,23 @@ void setup() {
         delay(5);
       }
       uint8_t modeByte = Serial.read();
-      gFreeplayMode = (modeByte == 1); // TODO CHECK IF THIS IS RIGHT
+      if (modeByte == static_cast<uint8_t>(5)) {
+        gFreeplayMode = 0;
+      } else if (modeByte == static_cast<uint8_t>(6) {
+        gFreeplayMode = 1;
+      }
     }
 
-    // Step 4: Call calibration function to calibrate all sensors BASED ON MODE
-    // if freeplay mode only call velostat and flex sensor calibration
-    // if learning mode call velostat, flex, and haptic calibration (needs mux)
-    if (gFreeplayMode) {
-      
-    // NOTE: skip calibration for now
-    // calibrateVelostat(); // only calibrate velostat and flex sensors
-    } else {
-    //   calibrateVelostat(); // velostat and flex sensors
-    //   calibrateHaptics(); // haptics calibration function
+    //LEARNING MODE IS 5  
 
+
+
+    // Step 4: Call calibration function to calibrate all sensors!
+    // Since we already did haptics, it can do velostat regardless of mode
+    calibrateVelostat();
+
+    // if in LEARNING MODE - move on to song selection
+    if (!gFreeplayMode) {
       /**
       * You have selected learning mode. Please select a song by pressing the rightmost button
       * once for Song 1, twice for Song 2, thrice for Song 3.
@@ -570,13 +607,11 @@ void setup() {
         // detect and wait to see how many times button was pressed, send that 
         // number back to the python unit - only for left hand
 
-
-        //   int songPressCount = buttonPressCount(6000, BUTTON_SONG); // 6 second window to press button
-        //   Serial.write(static_cast<uint8_t>(songPressCount)); // send selected song number back to python
+          int songPressCount = buttonPressCount(6000, BUTTON_SONG); // 6 second window to press button
+          Serial.write(static_cast<uint8_t>(songPressCount)); // send selected song number back to python
           delay(10);
       } 
-    }
-
+    } 
 
     // Step 6: Final confirmation message to python that setup is complete and game can begin.
     // really a message that says "if u press the mode button at any point during gameplay,
@@ -601,43 +636,71 @@ void setup() {
     // final confirmation message to python - this cues it to play out 
     // final message on audio hat and then clear its input buffer or whatever needs to be done
     Serial.write(static_cast<uint8_t>(VoiceCommands::FLUSH));
+
+
+    // MIDDLE FINGER VIBRATES ONCE SETUP IS DONE
+    buzzMotor(2);
 }
 
 
 void loop() {
-    // NEED TO INTEGRATE A BUTTON INTERRUPT: IF AT ANY POINT THE MODE BUTTON IS PRESSED,
-    // RETURN TO SETUP LOGIC TO CHANGE MODES??? 
+
+  volatile bool curGFreeplay = gFreeplayMode;
+
+  if (gModeToggleRequested) { // THIS WILL ONLY BE CALLED ON LEFT HAND
+
+    // buzz the left side of wrist entering interrupt  
+    buzzMotor(5);
+
+    noInterrupts();                    
+    gModeToggleRequested = false;
 
 
-  // button interrupt handler
-  // if (gModeToggleRequested) { // THIS WILL ONLY BE CALLED ON LEFT HAND
+    // past state == learning mode, want to switch to freeplay
+    if(curGFreeplay == 0) {
+      Serial.write(static_cast<uint8_t>(6));
+      Serial.write(static_cast<uint8_t>(6));
+      Serial.write(static_cast<uint8_t>(6));
+      Serial.write(static_cast<uint8_t>(6));
+    }
+    if(curGFreeplay == 1) {
+      Serial.write(static_cast<uint8_t>(5));
+      Serial.write(static_cast<uint8_t>(5));
+      Serial.write(static_cast<uint8_t>(5));
+      Serial.write(static_cast<uint8_t>(5));
+    }
 
-  //   noInterrupts();                    
-  //   gModeToggleRequested = false;
-  //   bool currentMode = gFreeplayMode;
-  //   interrupts();
+    // PYTHON SIDE: WILL CHANGE MODE
 
-  //   // send new mode to python to assign to other gloves
-  //   Serial.write(static_cast<uint8_t>(currentMode));
-  //   delay(500); // MIGHT NEED TO CHANGE THIS TO ALLOW OTHER GLOVE TIME TO UPDATE
+        // FOR BOTH GLOVES, BEFORE RUNNING THIS SHIT, WE WANT TO CHECK
+      // IN EACH LOOP IF THE MODE IS BEING CHANGED
+      // TODO FIX THIS FOR RIGHT GLOVE SOMEHOW
+    while(true){
+      modeRes = Serial.read();
+      if(modeRes == static_cast<uint8_t>(6)) {
+        gFreeplayMode = 1; // we switch into freeplay!
+      } else if (modeRes == static_cast<uint8_t>(5)) {
+        gFreeplayMode = 0; // we switch into learning!
+      }
+    }
+    interrupts();
+  }
 
-  //   // If we JUST switched into LEARNING MODE, run song selection
-  //   if (!currentMode) {
+  // buzz right side of write 
+  buzzMotor(6);
 
-  //       if (TEENSY_HAND == Hand::Left) {
+      // If we JUST switched into LEARNING MODE, run song selection
+   if (curGFreeplay == 1 && gFreeplayMode == 0) {
 
-  //           Serial.write(static_cast<uint8_t>(VoiceCommands::SELECT_SONG));
-  //           delay(7500);
+        if (TEENSY_HAND == Hand::Left) {
 
-  //           int songPressCount = buttonPressCount(6000, BUTTON_SONG);
-  //           Serial.write(static_cast<uint8_t>(songPressCount));
-  //       }
-  //   }
+            Serial.write(static_cast<uint8_t>(VoiceCommands::SELECT_SONG));
+            delay(7500);
 
-  //       // If we switched back to FREEPLAY, just comtinue to main loop
-  // }
-
-
+            int songPressCount = buttonPressCount(6000, BUTTON_SONG);
+            Serial.write(static_cast<uint8_t>(songPressCount));
+        }
+    }
 
     // now, depending on the mode, call the proper logic.
     // if in freeplay mode, call finger press checking function because thats all we need 
