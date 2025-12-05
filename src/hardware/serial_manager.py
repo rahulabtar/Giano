@@ -371,13 +371,11 @@ class LeftGloveSerialManager(BaseSerialManager):
             correct_manager.hand = detected_hand
             # Clear our connection so we don't close it
             self.conn = None
-            # Start the correct manager
-            correct_manager._start()
             return True, detected_hand, correct_manager
         
-        # Correct hand detected, update self.hand and start
+        # Correct hand detected, update self.hand
         self.hand = detected_hand
-        self._start()
+
         return True, detected_hand, self
     
     def recieve_voice_command(self) -> None:
@@ -420,11 +418,26 @@ class LeftGloveSerialManager(BaseSerialManager):
         return number
 
 
-    
-  
+    def start(self):
+        self._running = True
+        
+        self._send_thread = threading.Thread(
+            target=self._send_worker, daemon=True)
+        self._recv_thread = threading.Thread(
+            target=self._recv_worker, daemon=True)
+        self._send_thread.start()
+        self._recv_thread.start()
+        
+        self._confirm_start()
+
+
+
+    def _confirm_start(self):
+        logger.info("Left glove is now running in playing mode")
 
     def _start(self):
         """
+        DEPRECATED FOR NOW
         Start all communication threads.
 
         This will correspond to setup on the left glove controller.
@@ -440,37 +453,7 @@ class LeftGloveSerialManager(BaseSerialManager):
 
         return True
 
-        if self.conn.in_waiting > 0:
-            # Read the first byte in stream to get the mode info (consumes it)
-            mode_bytes = self.conn.read(1)
-            
-            if not mode_bytes:
-                logger.warning("No mode byte received from glove controller")
-                return
-            
-            # Convert bytes to int for comparison
-            mode_value = mode_bytes[0]
-            
-            print(f"Mode: {mode_value} from {self.hand}-hand glove controller")
-            
-            # PlayingMode is a regular Enum, so compare with .value
-            if mode_value == PlayingMode.LEARNING_MODE.value:
-                self._play_mode = PlayingMode.LEARNING_MODE
-            elif mode_value == PlayingMode.FREEPLAY_MODE.value:
-                self._play_mode = PlayingMode.FREEPLAY_MODE
-            else:
-                raise ValueError(f"Invalid play mode: {mode_value}")
 
-        self._running = True
-        
-        self._send_thread = threading.Thread(
-            target=self._send_worker, daemon=True)
-        self._recv_thread = threading.Thread(
-            target=self._recv_worker, daemon=True)
-        self._send_thread.start()
-        self._recv_thread.start()
-        
-        logger.info("Glove serial manager started")
     
     def stop(self):
         """Stop all communication threads."""
@@ -518,6 +501,22 @@ class LeftGloveSerialManager(BaseSerialManager):
 
         return instruction
 
+
+    def send_byte(self, byte: int):
+        """
+        Send a byte to the right glove controller.
+        """
+        if self.conn:
+            logger.info(f"Sending byte {byte} to {self.hand}-hand glove controller")
+            
+            self.conn.write(bytes([byte]))
+            self.conn.flush()
+            time.sleep(0.1)
+            logger.info(f"Byte {byte} sent to {self.hand}-hand glove controller")
+        else:
+            logger.error("Not connected to the glove controller")
+
+
     def send_command(self, motor_id: int, midi_note: int, action: int):
         """
         Send command to glove controller (non-blocking).
@@ -539,7 +538,7 @@ class LeftGloveSerialManager(BaseSerialManager):
         except queue.Full:
             logger.warning("Glove send queue full, dropping message")
     
-    def get_responses(self) -> List[bytes]:
+    def get_from_recv_queue(self) -> List[bytes]:
         """Get all pending glove responses."""
         responses = []
         while not self.recv_queue.empty():
@@ -564,18 +563,17 @@ class LeftGloveSerialManager(BaseSerialManager):
                 continue
             except Exception as e:
                 logger.error(f"Error sending glove message: {e}")
+
     
     def _recv_worker(self):
         """Worker thread for receiving from glove controller."""
         while self._running:
             try:
-                if self.conn and self.conn.in_waiting > 3: # 3 bytes is the size of the message
-                    line = self.conn.read(3)
-                    self.recv_queue.put_nowait(line) # puts into que 
+                if self.conn and self.conn.in_waiting > 4: # 3 bytes is the size of the message
+                    line = self.conn.read(4)
+                    self.recv_queue.put_nowait(line) # puts into queue 
 
                     
-                    # TODO: See where handling lines should go
-                    # self.handle_line_rx(line)
 
                     # Also call callback if set
                     if self.callback:
@@ -608,6 +606,10 @@ class RightGloveSerialManager(LeftGloveSerialManager):
         super().__init__(port, baud_rate)
         self.hand = Hand.RIGHT
     
+    def _confirm_start(self):
+        logger.info("Right glove is now running in playing mode")
+
+
     def _start(self):
         """
         Start all communication threads.

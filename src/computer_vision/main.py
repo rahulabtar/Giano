@@ -8,11 +8,6 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 import cv2 as cv
-import mediapipe as mp
-BaseOptions = mp.tasks.BaseOptions
-HandLandmarker = mp.tasks.vision.HandLandmarker
-HandLandmarkerOptions = mp.tasks.vision.HandLandmarkerOptions
-VisionRunningMode = mp.tasks.vision.RunningMode
 
 
 import numpy as np
@@ -30,11 +25,11 @@ try:
     from src.computer_vision.aruco_pose_tracker import ArucoPoseTracker
     from src.computer_vision.aruco_polygon_detector import ArucoPolygonDetector
     from src.computer_vision.aruco_pose_tracker import TrackingMode
-    from src.computer_vision.color_tracker import ColorTracker
+    from src.computer_vision.color_tracker import ColorTracker, GLOVE_COLORS
     from src.computer_vision.finger_aruco_tracker import FingerArucoTracker
     from src.hardware.serial_manager import LeftGloveSerialManager, RightGloveSerialManager, AudioBoardManager
-    from src.hardware.serial_main import teensy_connect
-    from src.hardware.protocols import ActionCode, PlayingMode, Hand, SensorValue, VoiceCommand
+    from src.hardware.serial_main import teensy_connect, teensy_calibrate
+    from src.hardware.protocols import ActionCode, PlayingMode, Hand, SensorValue, VoiceCommand, GloveProtocolFreeplayMode, SensorNumberLeft
     from src.core.constants import MARKER_SIZE, MARKER_IDS, HAND_MODEL_PATH, CAMERA_CALIBRATION_PATH, IN_TO_METERS, PI
     from src.core.utils import name_from_midi
 except ImportError as e:
@@ -77,11 +72,33 @@ def resize_for_display(image: np.ndarray, max_width: int = 1280, max_height: int
 
 
 def main():
+    #first thing we will do is connect to the serial port
+    left_glove, right_glove, audio_board = teensy_connect()
+    if not left_glove.is_connected() or not right_glove.is_connected() or not audio_board.is_connected():
+        raise ValueError("Not connected to the gloves and audio board")
+    
+    logger.info("Connected to the gloves and audio board")
+    # enter calibration process
+    left_glove, right_glove, audio_board = teensy_calibrate(left_glove, right_glove, audio_board)
+    
+    if left_glove._play_mode == PlayingMode.LEARNING_MODE:
+        logger.info("Left glove is in learning mode")
+    
+    elif left_glove._play_mode == PlayingMode.FREEPLAY_MODE:
+        logger.info("Left glove is in freeplay mode")
+    
+    else:
+        raise ValueError("Invalid mode")
+
+    left_glove.start()
+    right_glove.start()
+    # sets the global playing mode
+    playing_mode = left_glove._play_mode
     # Choose which camera to use. Default for computer onboard webcam is 0
     # available_cams = test_available_cams(2)
 
     # Choose the second one because that SHOULD be the webcam on laptop
-     # attempt to open the calibration file as a z
+    # attempt to open the calibration file as a z
     try:
         calib_npz = np.load(CAMERA_CALIBRATION_PATH)
         camera_matrix = calib_npz["camera_matrix"]
@@ -95,11 +112,7 @@ def main():
     
     
 
-    # Initialize serial communication manager
-    logger.info("Initializing serial communication...")
-    # # Start serial manager
-    # serial_manager.start()
-
+    
     # Let user select camera
     # camera_id = list_and_select_camera(max_cameras=10)
     # TODO: change hardcoding
@@ -110,7 +123,7 @@ def main():
         return
     # initialize piano calibration
     # initialize aruco stuff
-    tracker = ColorTracker(min_area=500,max_area=50000, max_number_of_colors=5, max_trackers_per_color=2, max_total_trackers=10)
+    tracker = ColorTracker(min_area=1000,max_area=50000, max_number_of_colors=5, max_trackers_per_color=2, max_total_trackers=10)
 
     aruco_pose_tracker = ArucoPoseTracker(camera_matrix, dist_coeffs, mode = TrackingMode.STATIC)
     finger_aruco = FingerArucoTracker(camera_matrix, dist_coeffs,
@@ -166,6 +179,9 @@ def main():
     
     frame_count = 0
     
+    # Track active MIDI notes per hand and finger/color
+    # Structure: {hand: {color: midi_number}}
+    active_notes = {"left": {}, "right": {}}
     
     # ================================================ MAIN LOOP ================================================
     while True:
@@ -194,6 +210,7 @@ def main():
             success, _ = finger_aruco.get_marker_polygon(MARKER_IDS, poses)
             image = finger_aruco.draw_box(image)
 
+        
         # ============================= HAND FINDER PART =============================
         birdseye_image = finger_aruco.transform_image_to_birdseye(image)
       
@@ -205,28 +222,139 @@ def main():
         tracked_centroids = tracker.get_centroids('all')
         
         
-        # if playing_mode = freeplay
-        # find the closest key for each bbox thing
-        for color_name, bboxes in tracked_boxes.items():
-            color_tracking_points = []
-            for i, bbox in enumerate(bboxes):
-                x, y, w, h = bbox
-                # get the closest point to the edge of the finger
-                tracking_point = int(x + w/2), int(y + h)
-                midi_number = finger_aruco.find_closest_key(tracking_point[0], tracking_point[1], method='centroid')
-                
-                # this might break
-                tracked_image = cv.drawMarker(tracked_image, tracking_point, (0, 255, 0), cv.MARKER_CROSS, 10)
-                midi_note_name = name_from_midi(midi_number)
-                print(f"Color {color_name} bbox {i}: {x}, {y}, {w}, {h}: {midi_note_name}")
-                color_tracking_points.append((tracking_point[0], tracking_point[1], midi_number))
+        if playing_mode == PlayingMode.FREEPLAY_MODE:
+        
+        # get the responses from the gloves
+            left_glove_responses = left_glove.get_from_recv_queue()
             
-            # sort by x coordinate, because the keyboard is backwards, assume the leftmost x is the righthand
-            # TODO: see if the kalman filter tracks the hand
-            sorted_color_tracking_points = sorted(color_tracking_points, key=lambda x: x[0])
+            right_glove_responses = right_glove.get_from_recv_queue()
+            
 
-        #recieve from serial byte and forward to audiohat
+            if left_glove_responses:
+                logger.info(f"Left glove responses: {left_glove_responses}")
+            # Process left glove responses: expect 4 single-byte messages -> list of 4 bytes
+            if len(left_glove_responses) >= 4:
+                left_glove_instruction_set = GloveProtocolFreeplayMode.unpack(left_glove_responses[:4])
+                logger.info(f"Unpacked left glove instruction: {left_glove_instruction_set}")
+                
+                # Get finger name from index (fingerIndex is 0-4)
+                finger_index = int(left_glove_instruction_set.fingerIndex)
+                if finger_index in SensorNumberLeft:
+                    color_to_find = SensorNumberLeft[finger_index]
+                else:
+                    logger.warning(f"Invalid finger index: {finger_index}")
+                    color_to_find = None
+            else:
+                logger.debug(f"Waiting for 4 left glove responses (have {len(left_glove_responses)})")
+                left_glove_instruction_set = None
+                color_to_find = None
+
+            if left_glove_instruction_set and color_to_find:
+                if left_glove_instruction_set.sensorValue == SensorValue.Pressed:
+                    logger.info(f"Left glove finger: {color_to_find} pressed")
+
+                    tracked_boxes = tracker.get_tracked_boxes(color_to_find)
+                    
+                    for box in tracked_boxes.get(color_to_find, []):
+                        x, y, w, h = box
+                        midi_number = finger_aruco.find_closest_key(x + w/2, y + h, method='centroid')
+                        midi_note_name = name_from_midi(midi_number)
+                        velocity = left_glove_instruction_set.velocity
+
+                        audio_board.note_on(midi_number, velocity)
+                        # Store the MIDI note for this finger/color so we can turn it off later
+                        active_notes["left"][color_to_find] = midi_number
+                        logger.info(f"Playing note {midi_note_name} with velocity {velocity}")
+                else:
+                    # Retrieve the stored MIDI note for this finger/color and turn it off
+                    if color_to_find in active_notes["left"]:
+                        midi_number = active_notes["left"][color_to_find]
+                        audio_board.note_off(midi_number)
+                        del active_notes["left"][color_to_find]  # Remove from tracking
+                        midi_note_name = name_from_midi(midi_number)
+                        logger.info(f"Left glove finger: {color_to_find} released, stopped note {midi_note_name}")
+                    else:
+                        logger.warning(f"No active note found for left glove finger: {color_to_find}")
+
             
+
+            # Process right glove responses: expect 4 single-byte messages -> list of 4 bytes
+            if right_glove_responses:
+                logger.info(f"Right glove responses: {right_glove_responses}")
+            if len(right_glove_responses) >= 4:
+                right_glove_instruction_set = GloveProtocolFreeplayMode.unpack(right_glove_responses[:4])
+                logger.info(f"Unpacked right glove instruction: {right_glove_instruction_set}")
+                
+                # Get finger name from index (fingerIndex is 0-4)
+                finger_index = int(right_glove_instruction_set.fingerIndex)
+                if finger_index in SensorNumberLeft:  # Assuming same mapping for right hand
+                    color_to_find_right = SensorNumberLeft[finger_index]
+                else:
+                    logger.warning(f"Invalid finger index: {finger_index}")
+                    color_to_find_right = None
+            else:
+                logger.debug(f"Waiting for 4 right glove responses (have {len(right_glove_responses)})")
+                right_glove_instruction_set = None
+                color_to_find_right = None
+
+            if right_glove_instruction_set and color_to_find_right:
+                if right_glove_instruction_set.sensorValue == SensorValue.Pressed:
+                    logger.info(f"Right glove finger: {color_to_find_right} pressed")
+
+                    tracked_boxes_right = tracker.get_tracked_boxes(color_to_find_right)
+                    
+                    for box in tracked_boxes_right.get(color_to_find_right, []):
+                        x, y, w, h = box
+                        midi_number = finger_aruco.find_closest_key(x + w/2, y + h, method='centroid')
+                        midi_note_name = name_from_midi(midi_number)
+                        velocity = right_glove_instruction_set.velocity
+
+                        audio_board.note_on(midi_number, velocity)
+                        time.sleep(0.1)
+                        # Store the MIDI note for this finger/color so we can turn it off later
+                        active_notes["right"][color_to_find_right] = midi_number
+                        logger.info(f"Playing note {midi_note_name} with velocity {velocity}")
+                else:
+                    # Retrieve the stored MIDI note for this finger/color and turn it off
+                    if color_to_find_right in active_notes["right"]:
+                        midi_number = active_notes["right"][color_to_find_right]
+                        audio_board.note_off(midi_number)
+                        del active_notes["right"][color_to_find_right]  # Remove from tracking
+                        midi_note_name = name_from_midi(midi_number)
+                        logger.info(f"Right glove finger: {color_to_find_right} released, stopped note {midi_note_name}")
+                    else:
+                        logger.warning(f"No active note found for right glove finger: {color_to_find_right}")
+            
+
+                
+            # tracked_boxes = tracker.get_tracked_boxes('all')
+            # # find the closest key for each bbox
+            # for color_name, bboxes in tracked_boxes.items():
+            #     color_tracking_points = []
+            #     if len(bboxes) > 1:
+            #         logger.warning(f"Multiple bboxes found for color {color_name}")
+            #         continue
+                
+            #     for i, bbox in enumerate(bboxes):
+            #         x, y, w, h = bbox
+            #         # get the closest point to the edge of the finger
+            #         tracking_point = int(x + w/2), int(y + h)
+            #         midi_number = finger_aruco.find_closest_key(tracking_point[0], tracking_point[1], method='centroid')
+                    
+            #         # this might break
+            #         tracked_image = cv.drawMarker(tracked_image, tracking_point, (0, 255, 0), cv.MARKER_CROSS, 10)
+            #         midi_note_name = name_from_midi(midi_number)
+            #         print(f"Color {color_name} bbox {i}: {x}, {y}, {w}, {h}: {midi_note_name}")
+            #         color_tracking_points.append((tracking_point[0], tracking_point[1], midi_number))
+                
+            #     # sort by x coordinate, because the keyboard is backwards, assume the leftmost x is the righthand
+            #     # TODO: see if the kalman filter tracks the hand
+            #     sorted_color_tracking_points = sorted(color_tracking_points, key=lambda x: x[0])
+            
+            
+            
+
+
         cv.imshow("Tracked", tracked_image)
 
 

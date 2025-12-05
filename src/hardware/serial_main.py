@@ -6,11 +6,11 @@ import logging
 
 # NOTE: this needs to be 
 
-num_gloves = 1
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 # MAY NEED THREADSAFETY
+
 
 
 def teensy_connect() -> tuple[LeftGloveSerialManager, RightGloveSerialManager, AudioBoardManager]:
@@ -39,9 +39,9 @@ def teensy_connect() -> tuple[LeftGloveSerialManager, RightGloveSerialManager, A
 def teensy_calibrate(left_glove: LeftGloveSerialManager, right_glove: RightGloveSerialManager, audio_board: AudioBoardManager):
   """
   Assumes connected to the gloves and audio board
+  function returns when flush command is received
   """
 
-  # TODO: check connection to the gloves and audio board
   if not left_glove.is_connected() or not right_glove.is_connected() or not audio_board.is_connected():
     raise ValueError("Not connected to the gloves and audio board")
 
@@ -50,6 +50,7 @@ def teensy_calibrate(left_glove: LeftGloveSerialManager, right_glove: RightGlove
 
   # entering calibation process
   time.sleep(1)
+  
   while True:
     # read byte from left_glove
     # blocks until a byte is received
@@ -66,17 +67,35 @@ def teensy_calibrate(left_glove: LeftGloveSerialManager, right_glove: RightGlove
 
       match command:
         
-        # Learning mode byte received
-        case PlayingMode.LEARNING_MODE.value:
+        # LEARNING MODE CONFIRM VOICE COMMAND RECEIVED
+        case VoiceCommand.LEARNING_MODE_CONFIRM.value:
           left_glove._play_mode = PlayingMode.LEARNING_MODE
-          logger.info("Learning mode command received")
+          right_glove._play_mode = PlayingMode.LEARNING_MODE
 
-        # Freeplay mode byte received
-        case PlayingMode.FREEPLAY_MODE.value:
+          logger.info("Learning mode confirm voice command received")
+          
+          # send learning mode confirm byte to right glove
+          right_glove.send_byte(PlayingMode.LEARNING_MODE.value)
+          
+
+          # send learning mode confirm voice command to audio board
+          audio_board.play_voice_command(VoiceCommand.LEARNING_MODE_CONFIRM)
+
+
+        # FREEPLAY MODE CONFIRM VOICE COMMAND RECEIVED
+        case VoiceCommand.FREEPLAY_MODE_CONFIRM.value:
           left_glove._play_mode = PlayingMode.FREEPLAY_MODE
-          logger.info("Freeplay mode command received")
+          right_glove._play_mode = PlayingMode.FREEPLAY_MODE
 
-        # Voice command byte received
+          logger.info("Freeplay mode confirm voice command received")
+          
+          # send freeplay mode confirm byte to right glove
+          right_glove.send_byte(PlayingMode.FREEPLAY_MODE.value)
+          
+          # send freeplay mode confirm voice command to audio board
+          audio_board.play_voice_command(VoiceCommand.FREEPLAY_MODE_CONFIRM)
+          
+        # Any other voice command byte received
         case _:
           command_enum = VoiceCommand(command)
           audio_board.play_voice_command(command_enum)

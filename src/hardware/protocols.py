@@ -9,35 +9,46 @@ Defines binary protocols for:
 import struct
 from enum import Enum, IntEnum
 from typing import Optional, Tuple, Dict, Any
+from dataclasses import dataclass
 import numpy as np
 import mido
 
+# TODO: add const for finger colors
+# TODO: flush as first byte to indicate mode change
+
+#-------------------------------- GLOVE COLORS --------------------------------
+
+
+
 #-------------------------------- COMMON SHARED --------------------------------
 
+# mode change command could be flush
 
 # Defines the "hand byte" during connection
 class Hand(IntEnum):
     AUDIO = 253
-    LEFT = 254
+    LEFT =  254
     RIGHT = 255
 
+# TODO: change on firmware
 class SensorValue(IntEnum):
-    Pressed=2
-    Released=3
+    Pressed =  7
+    Released = 8
 
 
-# TODO: make sure I need to have this
-class SensorNumberLeft(IntEnum):
-    Thumb=0
-    Index=1
-    Middle=2
-    Ring=3
-    Pinky=4
 
+SensorNumberLeft = {
+    0: "Thumb",
+    1: "Pointer",
+    2: "Middle",
+    3: "Ring",
+    4: "Pinky"
+}
 
+# TODO: ADD ON FIRMWARE
 class PlayingMode(Enum):
-    LEARNING_MODE = 0
-    FREEPLAY_MODE = 1
+    LEARNING_MODE = 5
+    FREEPLAY_MODE = 6
 
 """The finger instruction set will be sent back to Python
 from the Teensy once the velostat has detected a finger press.
@@ -53,10 +64,11 @@ class LearningModeGloveInstructionSet:
 
 # Matched to firmware, ordered
 # this should be a uint_8
+@dataclass
 class FreeplayModeGloveInstructionSet:
     hand: Hand
-    fingerIndex: SensorNumberLeft
-    velocity: np.uint8
+    fingerIndex: int
+    velocity: int
     sensorValue: SensorValue
 
 
@@ -91,8 +103,8 @@ class GloveProtocolFreeplayMode:
     """Protocol handler for glove controller communication."""
     
     # 3-byte message: [fingerInstructionSet]
-    PACK_FORMAT = 'BBB'  # 3 unsigned bytes
-    MESSAGE_SIZE = 3
+    PACK_FORMAT = 'BBBB'  # 4 unsigned bytes
+    MESSAGE_SIZE = 4
     
 
     @staticmethod
@@ -100,13 +112,30 @@ class GloveProtocolFreeplayMode:
         pass
     
     @staticmethod
-    def unpack(message: bytes) -> FreeplayModeGloveInstructionSet:
-        message_tuple = struct.unpack(GloveProtocolFreeplayMode.PACK_FORMAT, message)
+    def unpack(message: list[bytes] | tuple[bytes, ...]) -> FreeplayModeGloveInstructionSet:
+        """
+        Unpack a 4-byte freeplay message into a FreeplayModeGloveInstructionSet.
+        
+        Expects a list/tuple of exactly 4 single-byte messages (each bytes, length >= 1).
+        """
+        if not isinstance(message, (list, tuple)):
+            raise TypeError(f"Expected list/tuple of 4 bytes, got {type(message)}")
+        if len(message) != 4:
+            raise ValueError(f"Expected 4 single-byte messages, got {len(message)}")
+        
+        # Combine the first byte of each element; if any element is empty, use 0x00.
+        combined = b"".join([(m[:1] if len(m) > 0 else b"\x00") for m in message])
+        
+        if len(combined) != GloveProtocolFreeplayMode.MESSAGE_SIZE:
+            raise ValueError(f"Expected {GloveProtocolFreeplayMode.MESSAGE_SIZE} bytes after combining, got {len(combined)}")
+        
+        message_tuple = struct.unpack(GloveProtocolFreeplayMode.PACK_FORMAT, combined)
         
         return FreeplayModeGloveInstructionSet(
-            hand=message_tuple[0],
-            sensorValue=message_tuple[1],
-            sensorNumber=message_tuple[2]
+            hand=Hand(message_tuple[0]),
+            fingerIndex=int(message_tuple[1]),  # Store as integer index (0-4)
+            velocity=int(message_tuple[2]),
+            sensorValue=SensorValue(int(message_tuple[3]))
         )
 
 

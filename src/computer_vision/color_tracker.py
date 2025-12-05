@@ -6,6 +6,17 @@ from typing import List, Tuple, Dict, Optional
 # NOTE: Ideas. Make sure to update the README.md with the new color tracker.
 # I want to calibrate the colors using the color of the the white and black on the piano I think
 
+# goes "Finger Name" : "Color Name"
+GLOVE_COLORS = {
+    "Thumb": "Orange",
+    "Pointer": "Blue",
+    "Middle": "Yellow",
+    "Ring": "Red",
+    "Pinky": "Green"
+}
+
+
+
 class BoundingBoxKalmanFilter:
     """
     Kalman filter for tracking bounding boxes.
@@ -119,10 +130,11 @@ class ColorTracker:
     
     # Default HSV ranges for ROYGB colors
     DEFAULT_COLOR_RANGES = {
-        "Red":    [([0, 100, 50], [10, 255, 255]), ([170, 100, 50], [180, 255, 255])],  # wrap-around
-        "Orange": [([11, 100, 50], [25, 255, 255])],
-        "Yellow": [([26, 100, 50], [34, 255, 255])],
-        "Green":  [([35, 100, 50], [85, 255, 255])],
+        # Tightened boundaries and higher S/V to reduce bleed between red/orange/yellow
+        "Red":    [([0, 120, 60], [8, 255, 255]), ([172, 120, 60], [180, 255, 255])],  # wrap-around
+        "Orange": [([9, 120, 60], [24, 255, 255])],
+        "Yellow": [([25, 120, 60], [35, 255, 255])],
+        "Green":  [([36, 100, 50], [85, 255, 255])],
         "Blue":   [([100, 100, 50], [130, 255, 255])]
     }
     
@@ -431,6 +443,7 @@ class ColorTracker:
             return {
                 color_name: [tracker.get_bbox() for tracker in self.kalman_trackers[color_name]]
             }
+            
         elif color_name == 'all' or color_name is None:
             return {
                 name: [tracker.get_bbox() for tracker in trackers]
@@ -487,7 +500,7 @@ if __name__ == "__main__":
     webcam = cv2.VideoCapture(0)
     
     # Create tracker
-    color_track = ColorTracker(max_area=100000, max_number_of_colors=5)
+    color_track = ColorTracker(min_area=1000, max_area=100000, max_number_of_colors=5, max_trackers_per_color=1)
     aruco_pose_tracker = ArucoPoseTracker(camera_matrix, dist_coeffs, mode = TrackingMode.STATIC, marker_ids=MARKER_IDS)
 
     # create aruco polygon detector
@@ -497,7 +510,7 @@ if __name__ == "__main__":
     while True:
         ret, frame = webcam.read()
         corners, ids, rejected = aruco_pose_tracker.detect_markers(frame)
-        
+        cv2.imshow("Aruco markers", frame)
         # get rotation vector and translation vector
         if corners is not None and ids is not None:
             poses = aruco_pose_tracker.get_marker_poses(frame, marker_size_meters=MARKER_SIZE*IN_TO_METERS)
