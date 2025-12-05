@@ -92,15 +92,8 @@ def main():
     
     
 
-    # # Initialize serial communication manager
-    # print("Initializing serial communication...")
-    # serial_manager = SerialManager(auto_connect=True)
-    # time.sleep(1)  # Give time for connections to establish
-    
-    # # Check connection status
-    # connections = serial_manager.is_connected()
-    # print(f"Connection status - Glove: {connections['glove']}, Audio: {connections['audio']}")
-    
+    # Initialize serial communication manager
+    logger.info("Initializing serial communication...")
     # # Start serial manager
     # serial_manager.start()
 
