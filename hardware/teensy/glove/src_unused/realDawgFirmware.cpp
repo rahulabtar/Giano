@@ -1,9 +1,19 @@
+// TODO: please for the love of god put the functions somewhere else
+
+
 #include <Arduino.h>
 #include <serial_commands.h>
 #include <Wire.h>
 #include "Adafruit_DRV2605.h"
 
+
 // I'm a floo flammer homie all these chains on my neck I need two hammers homie
+
+
+// VELOSTAT SETUP VARIABLES
+// number of velostat sensors
+const int NUM_VELOSTAT = 5;
+
 
 /**
  * Working toward putting setups for both modes in here - freeplay and learning.
@@ -11,11 +21,21 @@
  */
 
 // Setting Type for the hand: *must manually changed before uploading to each hand*
-// IF LEFT HAND:
+
+// IF LEFT HAND
 #define TEENSY_HAND Hand::Left
+
+//LEFT PINS:
+const int gVELOSTAT_PINS[NUM_VELOSTAT] = {14, 18, 19, 21, 20}; 
+
 
 // IF RIGHT HAND
 //#define TEENSY_HAND Hand::Right
+
+// RIGHT PINS:
+//const int gVELOSTAT_PINS[NUM_VELOSTAT] = {20, 21, 19, 18, 14}; 
+
+
 
 // Set button pins for left glove - CHECK THESE PLEASEEEE!!!!
 // LEFTMOST BUTTON CONTROLS SONG, RIGHT CONTROLS MODE
@@ -27,23 +47,18 @@ volatile bool gFreeplayMode = true;
 
 // Global variable for changing mode- FLAG TO CHECK IF MODE TOGGLE REQUESTED
 volatile bool gModeToggleRequested = false;
-
-// VELOSTAT SETUP VARIABLES
-// number of velostat sensors
-const int NUM_VELOSTAT = 5; 
+; 
 // array of size of # of velostat sensors, sets their pins - ADD THIS
 // thumb index 0, pinky at 4. ON LEFT GLOVE: PINKY IS LEFTMOST CONNECTOR
 // ON RIGHT GLOVE: THUMB IS LEFTMOST CONNECTOR.
 // these numbers swap order for right glove.
 
-//LEFT PINS:
-const int VELOSTAT_PINS[NUM_VELOSTAT] = {14, 18, 19, 21, 20}; 
 
-// RIGHT PINS:
-//const int VELOSTAT_PINS[NUM_VELOSTAT] = {20, 21, 19, 18, 14}; 
+
 
 // set default state of pressed vs unpressed to be unpressed
 bool gPressed = false; 
+
 // array to hold state of each sensor (pressed or unpressed)
 bool gSensorState[NUM_VELOSTAT] = {false, false, false, false, false}; 
 // threshold for determining pressed vs unpressed - CAN BE ADJUSTED
@@ -108,7 +123,7 @@ void modeButtonISR() {
  * Calibrates all velostat sensors based on 3 levels of pressure: open, soft press, hard press
  * Sets the baseline values for each velostat sensor based on calibration algorithm.
  */
-void calibrateVelostat(unsigned int SAMPLE_COUNT = 200, unsigned int SAMPLE_PERIOD = 50) {
+void calibrateVelostat(unsigned int SAMPLE_COUNT = 310, unsigned int SAMPLE_PERIOD = 25) {
 
   int open_means[NUM_VELOSTAT];
   int open_stdevs[NUM_VELOSTAT];
@@ -127,7 +142,6 @@ void calibrateVelostat(unsigned int SAMPLE_COUNT = 200, unsigned int SAMPLE_PERI
   Serial.write(static_cast<uint8_t>(VoiceCommands::CALIBRATING));
   delay(2500);
   Serial.write(static_cast<uint8_t>(VoiceCommands::CALIBRATE_SINE_WAVE));
-  delay(8500);
 
   //Serial.println(" Velostat Calibration for Open ...");
   //delay(1000); 
@@ -143,8 +157,8 @@ void calibrateVelostat(unsigned int SAMPLE_COUNT = 200, unsigned int SAMPLE_PERI
     sum = 0;
     sumSq = 0;
 
-    for (int i = 0; i < SAMPLE_COUNT; i++) {
-      int reading = analogRead(VELOSTAT_PINS[finger]);
+    for (unsigned int i = 0; i < SAMPLE_COUNT; i++) {
+      int reading = analogRead(gVELOSTAT_PINS[finger]);
 
       sum += reading;
       sumSq += (long)reading * (long)reading;
@@ -165,14 +179,14 @@ void calibrateVelostat(unsigned int SAMPLE_COUNT = 200, unsigned int SAMPLE_PERI
   Serial.write(static_cast<uint8_t>(VoiceCommands::CALIBRATING));
   delay(2500);
   Serial.write(static_cast<uint8_t>(VoiceCommands::CALIBRATE_SINE_WAVE));
-  delay(8500);
+  
   //Serial.println(" Velostat Calibration for closed (light press)...");
   //delay(1000); 
   //Serial.println("Please hold all fingertips against surface lightly, like you are petting a cat :D");
   //delay(2000);
   //Serial.println("Starting now...");
 
-  for (int finger = 0; finger < NUM_VELOSTAT; finger++) {
+  for (unsigned int finger = 0; finger < NUM_VELOSTAT; finger++) {
 
     //Serial.print("\nCalibrating finger ");
     //Serial.println(finger);
@@ -180,8 +194,8 @@ void calibrateVelostat(unsigned int SAMPLE_COUNT = 200, unsigned int SAMPLE_PERI
     sum = 0;
     sumSq = 0;
 
-    for (int i = 0; i < SAMPLE_COUNT; i++) {
-      int reading = analogRead(VELOSTAT_PINS[finger]);
+    for (unsigned int i = 0; i < SAMPLE_COUNT; i++) {
+      int reading = analogRead(gVELOSTAT_PINS[finger]);
 
       sum += reading;
       sumSq += (long)reading * (long)reading;
@@ -201,7 +215,6 @@ void calibrateVelostat(unsigned int SAMPLE_COUNT = 200, unsigned int SAMPLE_PERI
   Serial.write(static_cast<uint8_t>(VoiceCommands::CALIBRATING));
   delay(2500);
   Serial.write(static_cast<uint8_t>(VoiceCommands::CALIBRATE_SINE_WAVE));
-  delay(8500);
   //Serial.println(" Velostat Calibration for closed (hard press)...");
   //delay(1000);
   //Serial.println("Please hold all fingertips against surface hard :D");
@@ -217,7 +230,7 @@ void calibrateVelostat(unsigned int SAMPLE_COUNT = 200, unsigned int SAMPLE_PERI
     sumSq = 0;
 
     for (int i = 0; i < SAMPLE_COUNT; i++) {
-      int reading = analogRead(VELOSTAT_PINS[finger]);
+      int reading = analogRead(gVELOSTAT_PINS[finger]);
 
       sum += reading;
       sumSq += (long)reading * (long)reading;
@@ -322,7 +335,7 @@ int buttonPressCount(unsigned long timeWindow, int buttonPin) {
  */
 void checkFingerPress() {
   for (unsigned int i = 0; i < NUM_VELOSTAT; i++) {
-    int raw = analogRead(VELOSTAT_PINS[i]);
+    int raw = analogRead(gVELOSTAT_PINS[i]);
     
     bool currentlyPressed = raw >= (gBaseline[i] + THRESHOLD);
 
@@ -333,7 +346,7 @@ void checkFingerPress() {
     
       // SENDS TO RASPI
       Serial.write(static_cast<uint8_t>(TEENSY_HAND));
-      Serial.write(static_cast<uint8_t>(SensorValue::Pressed));
+      Serial.write(static_cast<uint8_t>(SensorValue::PRESSED));
       Serial.write(static_cast<uint8_t>(i));     // send "note on" to receiver
 
       gSensorState[i] = true;  // remember it's pressed
@@ -345,7 +358,7 @@ void checkFingerPress() {
 
       // SENDING IT TO RASPI
       Serial.write(static_cast<uint8_t>(TEENSY_HAND));
-      Serial.write(static_cast<uint8_t>(SensorValue::Released));
+      Serial.write(static_cast<uint8_t>(SensorValue::RELEASED));
       Serial.write(static_cast<uint8_t>(i));     // send "note off" to receiver
 
       gSensorState[i] = false; // update state
@@ -371,77 +384,104 @@ void guideFingerPress() {
 
 }
 
+
+
+
+
 /**
  * SETUP FUNCTION TO RUN AT STARTUP AND AID IN SELECTING SONG/ MODE
  */
 void setup() {
 
-    // Step 1: Initialize Serial Communication
-    Serial.begin(115200); // for raspi <-> communication via USB
-    
-    Wire.begin();
-    delay(100); // just a buffer delay
-
-    
-    // ========== ROBUST HANDSHAKE PROTOCOL ==========
-    // Step 1: Clear any stale data in buffer
-    while(Serial.available()) {
-      Serial.read();
-    }
-    
-    // Step 2: Wait for handshake request (specific byte: 0xAA)
-    const uint8_t HANDSHAKE_REQUEST = 0xAA;
-    const uint8_t HANDSHAKE_ACK = 0x55;
-    
-    Serial.setTimeout(100);  // 100ms timeout for each read attempt
-    
-    while (true) {
-      if (Serial.available() > 0) {
-        uint8_t receivedByte = Serial.read();
+    // Step 1: Initialize Serial and wait for USB enumeration
+  Serial.begin(115200);
+  Wire.begin();
+  
+  // Wait for USB CDC to be ready (crucial!)
+  while (!Serial) {
+    delay(10);
+  }
+  delay(100);  // Additional stabilization time
+  
+  // Clear any stale data that arrived during boot
+  while (Serial.available()) {
+    Serial.read();
+  }
+  
+  // ========== ROBUST HANDSHAKE PROTOCOL ==========
+  const uint8_t HANDSHAKE_REQUEST = 0xAA;
+  const uint8_t HANDSHAKE_ACK = 0x55;
+  
+  // Wait for handshake with timeout
+  bool handshake_complete = false;
+  unsigned long handshake_start = millis();
+  const unsigned long HANDSHAKE_TIMEOUT = 30000;  // 30 second timeout
+  
+  while (!handshake_complete && (millis() - handshake_start < HANDSHAKE_TIMEOUT)) {
+    // Check if we received handshake request
+    if (Serial.available() > 0) {
+      uint8_t received = Serial.read();
+      
+      if (received == HANDSHAKE_REQUEST) {
+        // Clear any additional bytes
+        delay(10);
+        while (Serial.available()) {
+          Serial.read();
+        }
         
-        if (receivedByte == HANDSHAKE_REQUEST) {
-            // Step 3: Send handshake acknowledgment
-            Serial.write(HANDSHAKE_ACK);
-            delay(10);
-            
-            // Step 4: Send hand identifier
-            Serial.write(static_cast<uint8_t>(TEENSY_HAND));
-            delay(10);
-            
-            // Step 5: Wait for confirmation from Pi
-            unsigned long startWait = millis();
-            while (millis() - startWait < 1000) {  // 1 second timeout
-            if (Serial.available() > 0) {
-                uint8_t confirm = Serial.read();
-                if (confirm == HANDSHAKE_ACK) {
-                // Connection established successfully
-                break;
-                }
+        // Send ACK
+        Serial.write(HANDSHAKE_ACK);
+        Serial.flush();  // Ensure it's sent
+        delay(50);
+        
+        // Send hand identifier
+        Serial.write(static_cast<uint8_t>(TEENSY_HAND));
+        Serial.flush();
+        delay(50);
+        
+        // Wait for confirmation from Pi
+        unsigned long confirm_start = millis();
+        while (millis() - confirm_start < 10000) {  // 10 second timeout
+          if (Serial.available() > 0) {
+            uint8_t confirm = Serial.read();
+            if (confirm == HANDSHAKE_ACK) {
+              handshake_complete = true;
+              break;
             }
-            delay(10);
           }
+          delay(10);
+        }
+        
+        if (handshake_complete) {
           break;  // Exit handshake loop
         }
       }
-      delay(50);  // Small delay between handshake attempts
-      Serial.println("Waiting for handshake...");
     }
     
-    // Clear buffers after successful handshake
-    while(Serial.available()) {
-      Serial.read();
+    delay(50);  // Small delay between checks
+  }
+  
+  // If handshake failed, blink LED as error indicator
+  if (!handshake_complete) {
+    pinMode(LED_BUILTIN, OUTPUT);
+    while (true) {  // Stuck in error state
+      digitalWrite(LED_BUILTIN, HIGH);
+      delay(200);
+      digitalWrite(LED_BUILTIN, LOW);
+      delay(200);
     }
-    delay(100);
+  }
+  
+  // Clear buffers after successful handshake
+  delay(100);
+  while (Serial.available()) {
+    Serial.read();
+  }
+  
+  // ========== NOW PROCEED WITH SETUP ==========
 
-    // ========== END HANDSHAKE PROTOCOL ==========
+
     
-    // BOOTUP SOUND
-    while (!Serial.availableForWrite()) {
-      delay(5);
-    }
-    Serial.write(static_cast<uint8_t>(VoiceCommands::WELCOME_MUSIC));
-    
-    delay(6000);
 
     // Step 2: Initialize all necessary sensors/button components for setup logic
     // we only want buttons to work if on left hand
@@ -454,12 +494,22 @@ void setup() {
 
 
     if(TEENSY_HAND == Hand::Left) {
+        // startup song
+        // BOOTUP SOUND
+        while (!Serial.availableForWrite()) {
+          delay(5);
+        }
+        Serial.write(static_cast<uint8_t>(VoiceCommands::WELCOME_MUSIC));
+        
+        delay(6000);
 
         // Step 3: Setup, mode, and song selection logic! 
         // send notif to PYTHON to play the initial setup message of 
 
         // "welcome to GIANO, please select the mode by pressing the leftmost button. once 
         // for freeplay, twice for learning mode."
+        
+        
         Serial.write(static_cast<uint8_t>(VoiceCommands::WELCOME_TEXT));
         delay(2500);
         Serial.write(static_cast<uint8_t>(VoiceCommands::MODE_SELECT_BUTTONS));
@@ -471,6 +521,7 @@ void setup() {
         //delay(200); // not needed???
 
         int modePressCount = buttonPressCount(5000, BUTTON_MODE); // 5 second window to press button
+        
         if(modePressCount == 1) {
             gFreeplayMode = true; 
             Serial.write(static_cast<uint8_t>(VoiceCommands::FREEPLAY_MODE_CONFIRM));
@@ -500,10 +551,12 @@ void setup() {
     // if freeplay mode only call velostat and flex sensor calibration
     // if learning mode call velostat, flex, and haptic calibration (needs mux)
     if (gFreeplayMode) {
-      calibrateVelostat(); // only calibrate velostat and flex sensors
+      
+    // NOTE: skip calibration for now
+    // calibrateVelostat(); // only calibrate velostat and flex sensors
     } else {
-      calibrateVelostat(); // velostat and flex sensors
-      calibrateHaptics(); // haptics calibration function
+    //   calibrateVelostat(); // velostat and flex sensors
+    //   calibrateHaptics(); // haptics calibration function
 
       /**
       * You have selected learning mode. Please select a song by pressing the rightmost button
@@ -511,15 +564,17 @@ void setup() {
       */
       if (TEENSY_HAND == Hand::Left) {
           // Step 5: SONG SELECTION 
-          Serial.write(static_cast<uint8_t>(VoiceCommands::SELECT_SONG));
+          if (Serial.availableForWrite()) {Serial.write(static_cast<uint8_t>(VoiceCommands::SELECT_SONG));}
           delay(7500);
 
-          // detect and wait to see how many times button was pressed, send that 
-          // number back to the python unit - only for left hand
+        // detect and wait to see how many times button was pressed, send that 
+        // number back to the python unit - only for left hand
 
-          int songPressCount = buttonPressCount(6000, BUTTON_SONG); // 6 second window to press button
-          Serial.write(static_cast<uint8_t>(songPressCount)); // send selected song number back to python
-      }
+
+        //   int songPressCount = buttonPressCount(6000, BUTTON_SONG); // 6 second window to press button
+        //   Serial.write(static_cast<uint8_t>(songPressCount)); // send selected song number back to python
+          delay(10);
+      } 
     }
 
 
@@ -554,32 +609,33 @@ void loop() {
     // RETURN TO SETUP LOGIC TO CHANGE MODES??? 
 
 
-  if (gModeToggleRequested) { // THIS WILL ONLY BE CALLED ON LEFT HAND
+  // button interrupt handler
+  // if (gModeToggleRequested) { // THIS WILL ONLY BE CALLED ON LEFT HAND
 
-        noInterrupts();                    
-        gModeToggleRequested = false;
-        bool currentMode = gFreeplayMode;
-        interrupts();
+  //   noInterrupts();                    
+  //   gModeToggleRequested = false;
+  //   bool currentMode = gFreeplayMode;
+  //   interrupts();
 
-        // send new mode to python to assign to other gloves
-        Serial.write(static_cast<uint8_t>(currentMode));
-        delay(500); // MIGHT NEED TO CHANGE THIS TO ALLOW OTHER GLOVE TIME TO UPDATE
+  //   // send new mode to python to assign to other gloves
+  //   Serial.write(static_cast<uint8_t>(currentMode));
+  //   delay(500); // MIGHT NEED TO CHANGE THIS TO ALLOW OTHER GLOVE TIME TO UPDATE
 
-        // If we JUST switched into LEARNING MODE, run song selection
-        if (!currentMode) {
+  //   // If we JUST switched into LEARNING MODE, run song selection
+  //   if (!currentMode) {
 
-            if (TEENSY_HAND == Hand::Left) {
+  //       if (TEENSY_HAND == Hand::Left) {
 
-                Serial.write(static_cast<uint8_t>(VoiceCommands::SELECT_SONG));
-                delay(7500);
+  //           Serial.write(static_cast<uint8_t>(VoiceCommands::SELECT_SONG));
+  //           delay(7500);
 
-                int songPressCount = buttonPressCount(6000, BUTTON_SONG);
-                Serial.write(static_cast<uint8_t>(songPressCount));
-            }
-        }
+  //           int songPressCount = buttonPressCount(6000, BUTTON_SONG);
+  //           Serial.write(static_cast<uint8_t>(songPressCount));
+  //       }
+  //   }
 
-        // If we switched back to FREEPLAY, just comtinue to main loop
-    }
+  //       // If we switched back to FREEPLAY, just comtinue to main loop
+  // }
 
 
 

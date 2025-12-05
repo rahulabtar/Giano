@@ -42,28 +42,41 @@ void processMIDIData(){
 
   // gives us channel of message received - unsure if we need this
   int channel = usbMIDI.getChannel();
+  
   // gives us status updates of MIDI, we only care about ON/OFF
   int onStatus = usbMIDI.getType();
+
+
   // gives us first data byte associated with pitch
   int pitch = usbMIDI.getData1();
+  Serial.print(" Pitch: ");
+  Serial.println(pitch);
+
   // gives us second data byte associate with velocity
   int velocity = usbMIDI.getData2();
+
   // gives us port/cable data byte, helpful to control MIDI routing
   int cable = usbMIDI.getCable();
+
 
 
   // switch case regarding if the MIDI message is ON or OFF
   // NOTE: there are other cases we can play around with if needed!
   switch(onStatus) {
     case usbMIDI.NoteOn:
-    Serial.println(pitch);
       if (pitch >= 60){
         playAudioHat(pitch, velocity); //only plays for notes in the octaves supported 
       } 
-      else{
+      else {
         Serial.println(" Playing voice command...");
         VocalCommandCodes command = static_cast<VocalCommandCodes>(pitch);
+        Serial.print(" Command code: ");
+        Serial.println(static_cast<uint8_t>(command));
         const char* filename = voiceCmds.getFileName(command);
+        
+        Serial.print(" Filename: ");
+        Serial.println(filename);
+
         voiceCmds.playInstruction(filename);
       }
       break;

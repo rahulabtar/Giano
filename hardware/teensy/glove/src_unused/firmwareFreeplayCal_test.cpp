@@ -252,15 +252,17 @@
 //   delay(50); // optional debounce/stability
 // }
 
-// void checkVelocity(bool currentlyPressed, int raw, int fingerIndex){
-//   int velocity = 0; //if it prints this something is wrong
-//   Serial.println("Velocity reading: ");
-//   if (currentlyPressed){  
-//     velocity = map(raw, baseline[fingerIndex], maxPress[fingerIndex], 1, 127);
-//     Serial.println(velocity);
-//   }
-//   else {
-//     velocity = 0;
-//     Serial.println(velocity);
-//   }
-// }
+void checkVelocity(bool currentlyPressed, int raw, int fingerIndex){
+  int velocity = 0; //if it prints this something is wrong
+  Serial.println("Velocity reading: ");
+  if (currentlyPressed){  
+    velocity = map(raw, baseline[fingerIndex], maxPress[fingerIndex], 1, 127);
+    max(1, min(127, velocity)); //clamp between 1 and 127
+
+    Serial.println(velocity);
+  }
+  else {
+    velocity = 0;
+    Serial.println(velocity);
+  }
+}

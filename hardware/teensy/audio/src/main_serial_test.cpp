@@ -23,7 +23,9 @@ void setup() {
     Serial.begin(115200);
     delay(100);
 
-    Serial.write(static_cast<uint8_t>(Hand::Audio));
+    // take out for debug
+    // Serial.write(static_cast<uint8_t>(Hand::Audio));
+
 
     Serial.println("Setting up SD Card...");
     int sdSuccess = voiceCmds.setUpSD();
@@ -36,11 +38,13 @@ void setup() {
     instrOut.connect(voiceCmds.playWav1, 0, masterMixer, 1);
     masterPatch1.connect(masterMixer, 0, audioOutput, 0);
     masterPatch2.connect(masterMixer, 0, audioOutput, 1);
+
+    // make our interrupt handler for buttons turn off all notes on piano
 }
 
 void loop() {
     if(usbMIDI.read()) {
-    Serial.print("NOTE RECEIVED: PROCESSING NOW");
+    Serial.print("NOTE RECEIVED: PROCESSING NOW\n");
     processMIDIData();
     }
     //delay(1000);

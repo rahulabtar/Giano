@@ -8,10 +8,9 @@ enum class Hand : uint8_t
   Right
 };
 
-enum class SensorValue : uint8_t
-{
-  Pressed=0,
-  Released,
+enum class SensorValue : uint8_t {
+  PRESSED = 2,
+  RELEASED = 3,
 };
 
 enum class VoiceCommands : uint8_t{

@@ -32,9 +32,39 @@ class HandTracker():
                                         self.detection_con, self.track_con)
         self.mp_draw = mp.solutions.drawing_utils
 
+    
+    
+    def preprocess_for_gloves(self, image):
+        """
+        Remap black/grey glove colors to skin tones to help MediaPipe detection.
+        
+        Args:
+            image: Input BGR image
+        """
+        image = image.copy()
+        hsv = cv.cvtColor(image, cv.COLOR_BGR2HSV)
+        
+        # Black and grey: any hue, low saturation, dark to medium brightness (V: 0-200)
+        # This captures both black (V: 0-50) and grey (V: 50-200) gloves
+        lower_glove = np.array([0, 0, 0])
+        upper_glove = np.array([179, 50, 200])
+        
+        mask = cv.inRange(hsv, lower_glove, upper_glove)
+        cv.imshow('glove mask', mask)
+        skin_h, skin_s, skin_v = 15, 80, 200  # Skin tone HSV
+        hsv[mask > 0] = [skin_h, skin_s, skin_v]
+        # Convert back to BGR for proper display (cv.imshow expects BGR)
+        processed_bgr = cv.cvtColor(hsv, cv.COLOR_HSV2BGR)
+        cv.imshow('processed (hsv->bgr)', processed_bgr)
+        return processed_bgr
+
+        
     # find hands and draw landmarks on image
-    def hands_finder(self, image, draw=True):
+    def hands_finder(self, image, draw=True) -> np.ndarray:
+        
+        image = self.preprocess_for_gloves(image)
         image_rgb = cv.cvtColor(image, cv.COLOR_BGR2RGB)
+        
         self.results = self.hands.process(image_rgb)
 
         if self.results.multi_hand_landmarks:

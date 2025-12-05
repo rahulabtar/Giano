@@ -24,8 +24,8 @@
 // #define CONFSONG_SD "CONFSONG.wav"
 // #define CONFIRM_SD "CONFIRM.wav"
 
-#define BOOTED_SD                 "BOOTED.wav"
-#define WELCOME_SD                "WELCOME.wav"
+#define WELCOME_SONG_SD           "BOOTED.wav"
+#define WELCOME_TEXT_SD           "WELCOME.wav"
 #define SELSONG_SD                "SELSONG.wav"
 #define MODE_SELECT_BUTTONS_SD    "SELMOD.wav"
 #define SELECT_SONG_SD            "SELSONG.wav"
