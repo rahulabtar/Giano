@@ -65,17 +65,18 @@ def teensy_calibrate(left_glove: LeftGloveSerialManager, right_glove: RightGlove
       print(f"command is {command}")
 
       match command:
-        # Learning mode
+        
+        # Learning mode byte received
         case PlayingMode.LEARNING_MODE.value:
           left_glove._play_mode = PlayingMode.LEARNING_MODE
           logger.info("Learning mode command received")
 
-        # Freeplay mode
+        # Freeplay mode byte received
         case PlayingMode.FREEPLAY_MODE.value:
           left_glove._play_mode = PlayingMode.FREEPLAY_MODE
           logger.info("Freeplay mode command received")
 
-        # Voice commands
+        # Voice command byte received
         case _:
           command_enum = VoiceCommand(command)
           audio_board.play_voice_command(command_enum)
