@@ -257,7 +257,7 @@ void calibrateHaptics() {
     drv.go();
     Serial.println("  - Effect triggered");
     
-    delay(1000); // wait longer for effect to complete and be audible
+    delay(100); // wait longer for effect to complete and be audible
 
     Serial.print("Haptic Motor at MUX line ");
     Serial.print(i);
