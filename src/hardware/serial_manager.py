@@ -226,12 +226,17 @@ class BaseSerialManager:
         except:
             return False
     
-    def _auto_connect(self, num_retries: int = 5) -> tuple[bool, Optional[Hand]]:
+    def _auto_connect(self, num_retries: int = 5, exclude_ports: Optional[str] = None) -> tuple[bool, Optional[Hand]]:
         """
         Auto-detect and connect to device by testing available ports.
         
         Iterates through available serial ports and tests each one using
         _test_port(). Connects to the first port that passes the test.
+        Skips ports that respond with Hand.AUDIO and any ports in exclude_ports.
+        
+        Args:
+            num_retries: Maximum number of connection attempts per port
+            exclude_ports: List of COM ports to skip (e.g., audio board port)
         
         Returns:
             Tuple of (success: bool, detected_hand: Optional[Hand])
@@ -241,10 +246,19 @@ class BaseSerialManager:
         available_ports = self._list_serial_ports()
         logger.info(f"Available serial ports: {available_ports}")
         
+        if exclude_ports:
+            available_ports = [p for p in available_ports if p != exclude_ports]
+            logger.info(f"After excluding ports {exclude_ports}: {available_ports}")
+        
         for port in available_ports:
             if self._test_port(port):
                 success, detected_hand = self._connect(port, num_retries)
                 if success:
+                    # Skip audio board ports
+                    if detected_hand == Hand.AUDIO:
+                        logger.info(f"Skipping audio board on {port}")
+                        self.disconnect()
+                        continue
                     return success, detected_hand
             else:
                 logger.warning(f"Could not test port {port}")
@@ -334,7 +348,7 @@ class LeftGloveSerialManager(BaseSerialManager):
         else:
             raise ValueError(f"Invalid hand: {hand.name}")
     
-    def connect(self, num_retries: int = 5) -> tuple[bool, Optional[Hand], Optional[Union['LeftGloveSerialManager', 'RightGloveSerialManager']]]:
+    def connect(self, num_retries: int = 5, exclude_ports: Optional[str] = None) -> tuple[bool, Optional[Hand], Optional[Union['LeftGloveSerialManager', 'RightGloveSerialManager']]]:
         """
         Connect to glove controller. If the wrong hand is detected, returns
         a new manager instance for the correct hand with the connection transferred.
@@ -350,7 +364,7 @@ class LeftGloveSerialManager(BaseSerialManager):
         if self.port:
             success, detected_hand = self._connect(self.port, num_retries)
         else:
-            success, detected_hand = self._auto_connect(num_retries)
+            success, detected_hand = self._auto_connect(num_retries, exclude_ports)
         
         logger.info(f"Connection success: {success}, Detected hand: {detected_hand}")
         
@@ -400,22 +414,25 @@ class LeftGloveSerialManager(BaseSerialManager):
         """
 
         # Recieve byte
-
-        while self.conn.in_waiting == 0:
-            time.sleep(0.1)
-
-        byte = self.conn.read(1)
-        if byte != b'':
-            self.conn.reset_input_buffer()
-            number = byte[0]
-            print(f"byte received: {number}")
-
-        else: 
-            print("No byte received")
-            number = None
-
-
-        return number
+        # The firmware sends VoiceCommands followed by gFreeplayMode (0 or 1)
+        # Skip gFreeplayMode bytes (0 or 1) and read the actual voice command
+        while True:
+            while self.conn.in_waiting == 0:
+                time.sleep(0.1)
+            
+            byte = self.conn.read(1)
+            if byte == b'':
+                continue
+            
+            value = byte[0]
+            # Skip gFreeplayMode values (0 or 1) - these are not voice commands
+            if value == 0 or value == 1:
+                print(f"Skipping gFreeplayMode byte: {value}")
+                continue
+            
+            # This is a voice command byte
+            print(f"Voice command byte received: {value}")
+            return value
 
 
     def start(self):

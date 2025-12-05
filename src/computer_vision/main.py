@@ -214,7 +214,7 @@ def main():
         # ============================= HAND FINDER PART =============================
         birdseye_image = finger_aruco.transform_image_to_birdseye(image)
       
-        tracked_image = tracker.process_frame(birdseye_image, draw_contours=True, draw_colors=True)
+        tracked_image = tracker.process_frame(birdseye_image, draw_contours=True, draw_colors=True, draw_centroids=False)
         # we'll get both of these
         tracked_boxes = tracker.get_tracked_boxes('all')
 

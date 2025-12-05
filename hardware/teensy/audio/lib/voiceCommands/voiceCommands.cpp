@@ -48,7 +48,7 @@ const char* VoiceCommands::getFileName(VocalCommandCodes command) {
     Serial.print("Getting filename for command: ");
     switch(command) {
         case VocalCommandCodes::WELCOME_MUSIC:          return WELCOME_SONG_SD;
-        case VocalCommandCodes::WELCOME_TEXT:           return SELSONG_SD;
+        case VocalCommandCodes::WELCOME_TEXT:           return WELCOME_TEXT_SD;
         case VocalCommandCodes::MODE_SELECT_BUTTONS:    return MODE_SELECT_BUTTONS_SD;
         case VocalCommandCodes::SELECT_SONG:            return SELECT_SONG_SD;
         case VocalCommandCodes::FREEPLAY_MODE_CONFIRM:  return FREEPLAY_MODE_CONFIRM_SD;

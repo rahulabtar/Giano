@@ -19,8 +19,10 @@ def teensy_connect() -> tuple[LeftGloveSerialManager, RightGloveSerialManager, A
   glove_1 = LeftGloveSerialManager(baud_rate=SERIAL_BAUD_RATE)
   glove_2 = LeftGloveSerialManager(baud_rate=SERIAL_BAUD_RATE)
 
-  result_1, hand_1, glove_1 = glove_1.connect(num_retries=10)
-  result_2, hand_2, glove_2 = glove_2.connect(num_retries=10)
+  result_1, hand_1, glove_1 = glove_1.connect(num_retries=5, exclude_ports='COM7')
+  result_2, hand_2, glove_2 = glove_2.connect(num_retries=5, exclude_ports='COM7')
+
+  
 
   if not result_1 or not result_2:
     raise ValueError("Failed to connect to gloves")
@@ -46,7 +48,7 @@ def teensy_calibrate(left_glove: LeftGloveSerialManager, right_glove: RightGlove
     raise ValueError("Not connected to the gloves and audio board")
 
   print("swag is swag")
-
+  left_glove.conn.reset_input_buffer()
 
   # entering calibation process
   time.sleep(1)
@@ -58,7 +60,7 @@ def teensy_calibrate(left_glove: LeftGloveSerialManager, right_glove: RightGlove
     
     #flush will break the loop
     if command == VoiceCommand.FLUSH.value:
-      logger.info("Flush command received")
+      logger.warning("Flush command received")
       break
     
     # print command
@@ -99,12 +101,13 @@ def teensy_calibrate(left_glove: LeftGloveSerialManager, right_glove: RightGlove
         case _:
           command_enum = VoiceCommand(command)
           audio_board.play_voice_command(command_enum)
-      time.sleep(0.1)
+
+      time.sleep(0.2)
     else:
       print("No command received")
-      time.sleep(0.1)
+      time.sleep(0.2)
     
-    return left_glove, right_glove, audio_board
+  return left_glove, right_glove, audio_board
 
 
 if __name__ == "__main__":

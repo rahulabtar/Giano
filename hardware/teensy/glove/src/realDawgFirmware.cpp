@@ -5,15 +5,8 @@
 
 // LEFT HAND VARIABLES: UNCOMMENT THESE ALL FOR LEFT HAND
 
-#define TEENSY_HAND Hand::Left
-const int VELOSTAT_PINS[NUM_VELOSTAT] = {14, 18, 19, 20, 21}; 
-const int HAPTIC_PINS[NUM_HAPTICS] = {2, 1, 0, 6, 5, 4, 3};
 
-// RIGHT HAND VARIABLES: UNCOMMENT THESE ALL FOR RIGHT HAND
 
-//#define TEENSY_HAND Hand::Right
-//const int VELOSTAT_PINS[NUM_VELOSTAT] = {21, 20, 19, 18, 14}; 
-// const int HAPTIC_PINS[NUM_HAPTICS] = {5, 6, 0, 1, 2, 4, 3};
 
 // VELOSTAT SETUP VARIABLES
 const int PRESS_THRESHOLD = 45;   // threshold to register a press
@@ -46,6 +39,17 @@ volatile bool gFreeplayMode = true;
 
 // Global variable for changing mode- FLAG TO CHECK IF MODE TOGGLE REQUESTED
 volatile bool gModeToggleRequested = false;
+
+// #define TEENSY_HAND Hand::Left
+// const int VELOSTAT_PINS[NUM_VELOSTAT] = {14, 18, 19, 20, 21}; 
+// const int HAPTIC_PINS[NUM_HAPTICS] = {2, 1, 0, 6, 5, 4, 3};
+
+
+// RIGHT HAND VARIABLES: UNCOMMENT THESE ALL FOR RIGHT HAND
+
+#define TEENSY_HAND Hand::Right
+const int VELOSTAT_PINS[NUM_VELOSTAT] = {21, 20, 19, 18, 14}; 
+const int HAPTIC_PINS[NUM_HAPTICS] = {5, 6, 0, 1, 2, 4, 3};
 
 /**
  * HELPER FUNCTIONS
@@ -389,8 +393,8 @@ void buzzMotor(int sensorIndex) {
   tcaSelect(sensorIndex);
     delay(100); // give I2C time to switch
     
-    if (!drv.begin(&Wire1)) {
-      continue;
+    while (!drv.begin(&Wire1)) {
+      delay(10);
     }
     
     drv.selectLibrary(1); // Use library 1 for better effects
@@ -414,15 +418,15 @@ void buzzMotor(int sensorIndex) {
 //  * Function to help guide finger presses in learning mode. 
 //  * Uses haptics to signal each finger and where it should press. 
 //  */
-// void guideFingerPress() {
-//     // Step 1: Get the set of finger instructions that need to happen
+void guideFingerPress() {
+    // Step 1: Get the set of finger instructions that need to happen
 
-//     // Step 2: Apply it using haptics 
+    // Step 2: Apply it using haptics 
 
-//     // Step 3: detect a finger press, when that happens send back to Raspi for 
-//     // confirmation
+    // Step 3: detect a finger press, when that happens send back to Raspi for 
+    // confirmation
 
-// }
+}
 
 
 /**
@@ -536,7 +540,7 @@ void setup() {
           delay(5);
         }
         Serial.write(static_cast<uint8_t>(VoiceCommands::WELCOME_MUSIC));
-        
+        Serial.send_now();
         delay(6000);
 
         // Step 3: Setup, mode, and song selection logic! 
@@ -545,10 +549,20 @@ void setup() {
         // "welcome to GIANO, please select the mode by pressing the leftmost button. once 
         // for freeplay, twice for learning mode."
         
-        
+        while (!Serial.availableForWrite()) {
+          delay(5);
+        }
         Serial.write(static_cast<uint8_t>(VoiceCommands::WELCOME_TEXT));
+        Serial.send_now();
+
         delay(2500);
+
+        while (!Serial.availableForWrite()) {
+          delay(5);
+        }
         Serial.write(static_cast<uint8_t>(VoiceCommands::MODE_SELECT_BUTTONS));
+        Serial.send_now();
+
         delay(5500);
 
         // wait adequate time for user to press button, detect how many times it was pressed 
@@ -559,16 +573,22 @@ void setup() {
         if(modePressCount == 1) {
             gFreeplayMode = true; 
             Serial.write(static_cast<uint8_t>(VoiceCommands::FREEPLAY_MODE_CONFIRM));
+            Serial.send_now();
             delay(1500);
+
         } else if (modePressCount >= 2) {
             gFreeplayMode = false; 
             Serial.write(static_cast<uint8_t>(VoiceCommands::LEARNING_MODE_CONFIRM));
+            Serial.send_now();
+            
             delay(1500);
+
         } else {
         gFreeplayMode = true;  // default to freeplay
         }
         // write the mode selected back to python for confirmation
-        Serial.write(static_cast<uint8_t>(gFreeplayMode));
+        // Serial.write(static_cast<uint8_t>(gFreeplayMode));
+        // Serial.send_now();
     }
 
     // IF this is the right hand, we need to receive and set the mode from the Python brain
@@ -580,7 +600,7 @@ void setup() {
       uint8_t modeByte = Serial.read();
       if (modeByte == static_cast<uint8_t>(5)) {
         gFreeplayMode = 0;
-      } else if (modeByte == static_cast<uint8_t>(6) {
+      } else if (modeByte == static_cast<uint8_t>(6)) {
         gFreeplayMode = 1;
       }
     }
@@ -676,7 +696,7 @@ void loop() {
       // IN EACH LOOP IF THE MODE IS BEING CHANGED
       // TODO FIX THIS FOR RIGHT GLOVE SOMEHOW
     while(true){
-      modeRes = Serial.read();
+      uint8_t modeRes = Serial.read();
       if(modeRes == static_cast<uint8_t>(6)) {
         gFreeplayMode = 1; // we switch into freeplay!
       } else if (modeRes == static_cast<uint8_t>(5)) {
