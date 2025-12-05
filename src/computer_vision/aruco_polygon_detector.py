@@ -218,7 +218,6 @@ class ArucoPolygonDetector:
         
         Args:
             image: Input camera image (distorted)
-            undistort: If True, correct for lens distortion before perspective transform
             use_polygon_aspect_ratio: If True, compute output size from polygon aspect ratio (default: True)
             
         Returns:
