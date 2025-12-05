@@ -74,13 +74,18 @@ class FingerArucoTracker(ArucoPolygonDetector):
 
         return finger_keys
     
-    def find_closest_key(self, x_px: float, y_px: float) -> Optional[Dict]:
+    def find_closest_key(self, x_px: float, y_px: float, method: str = 'default') -> Optional[int]:
         """
         Find the closest key to a given (x_px, y_px) point in image space.
         
         Args:
             x_px: X coordinate in image space (pixels)
             y_px: Y coordinate in image space (pixels)
+            method: Method to use for finding closest key. Options:
+                - 'default' or 'centroid': Uses weighted distance to centroid (default)
+                - 'boundary': Uses distance to polygon boundary
+                - 'y_correction': Uses y-direction corrected distance metric
+                - 'full_correction': Uses full coordinate correction for both x and y
             
         Returns:
             MIDI note number of the closest key, 
@@ -89,30 +94,130 @@ class FingerArucoTracker(ArucoPolygonDetector):
         if self.keyboard_map is None:
             return None
         
-        # Transform point from image space to birdseye space
-        aruco_coords = self.transform_point_from_image_to_birdseye((x_px, y_px))
-        point = np.array([aruco_coords[0], aruco_coords[1]])
-        
-        closest_midi_note = None
-        min_distance = float('inf')
-
-
-        for key in self.keyboard_map:
-            result = cv.pointPolygonTest(key['contour'], point, measureDist=False)
-            if result > 0:
-                return key['midi_note']
+        # Method: 'default' or 'centroid'
+        if method == 'default' or method == 'centroid':
+            # Transform point from image space to birdseye space
+            aruco_coords = self.transform_point_from_image_to_birdseye((x_px, y_px))
+            point = np.array([aruco_coords[0], aruco_coords[1]])
             
-            # Use weighted distance: weight horizontal more than vertical
-            centroid = np.array(key['centroid'])
-            dx = point[0] - centroid[0]
-            dy = point[1] - centroid[1]
-            distance = self._weighted_distance(dx, dy)
+            closest_midi_note = None
+            min_distance = float('inf')
+
+            for key in self.keyboard_map:
+                result = cv.pointPolygonTest(key['contour'], point, measureDist=False)
+                if result > 0:
+                    return key['midi_note']
+                
+                # Use weighted distance: weight horizontal more than vertical
+                centroid = np.array(key['centroid'])
+                dx = point[0] - centroid[0]
+                dy = point[1] - centroid[1]
+                distance = self._weighted_distance(dx, dy)
+                
+                if distance < min_distance:
+                    min_distance = distance
+                    closest_midi_note = key['midi_note']
             
-            if distance < min_distance:
-                min_distance = distance
-                closest_midi_note = key['midi_note']
+            return closest_midi_note
         
-        return closest_midi_note
+        # Method: 'boundary'
+        elif method == 'boundary':
+            # Transform point from image space to birdseye space
+            aruco_coords = self.transform_point_from_image_to_birdseye((x_px, y_px))
+            point = np.array([aruco_coords[0], aruco_coords[1]], dtype=np.float32)
+            
+            closest_midi_note = None
+            min_distance = float('inf')
+
+            for key in self.keyboard_map:
+                # Use pointPolygonTest with measureDist=True to get signed distance
+                # Positive = inside polygon, negative = outside, value = distance to boundary
+                distance = cv.pointPolygonTest(key['contour'], point, measureDist=True)
+                
+                if distance > 0:
+                    # Point is inside the key - return immediately
+                    return key['midi_note']
+                
+                # For points outside, use absolute distance (negative value)
+                # This gives distance to the polygon boundary, which accounts for projection distortion
+                abs_distance = abs(distance)
+                if abs_distance < min_distance:
+                    min_distance = abs_distance
+                    closest_midi_note = key['midi_note']
+            
+            return closest_midi_note
+        
+        # Method: 'y_correction'
+        elif method == 'y_correction':
+            # Transform point from image space to birdseye space
+            aruco_coords = self.transform_point_from_image_to_birdseye((x_px, y_px))
+            point = np.array([aruco_coords[0], aruco_coords[1]], dtype=np.float32)
+            
+            # Get y-scale correction factor
+            y_scale = self._get_y_scale_factor()
+            
+            closest_midi_note = None
+            min_distance = float('inf')
+
+            for key in self.keyboard_map:
+                # Check if point is inside key
+                result = cv.pointPolygonTest(key['contour'], point, measureDist=False)
+                if result > 0:
+                    return key['midi_note']
+                
+                # Compute distance with y-correction and horizontal weighting
+                # Apply scale factor to y-component to account for perspective distortion
+                centroid = np.array(key['centroid'])
+                dx = point[0] - centroid[0]
+                dy = (point[1] - centroid[1]) * y_scale  # Apply correction to y-component
+                
+                # Use weighted distance (horizontal weighted more than vertical)
+                distance = self._weighted_distance(dx, dy)
+                
+                if distance < min_distance:
+                    min_distance = distance
+                    closest_midi_note = key['midi_note']
+            
+            return closest_midi_note
+        
+        # Method: 'full_correction'
+        elif method == 'full_correction':
+            # Transform with coordinate correction
+            corrected_x, corrected_y = self.transform_point_with_correction(x_px, y_px)
+            point = np.array([corrected_x, corrected_y], dtype=np.float32)
+            
+            closest_midi_note = None
+            min_distance = float('inf')
+
+            for key in self.keyboard_map:
+                # Apply same correction to key centroid for fair comparison
+                # Note: This assumes keys were detected in uncorrected space
+                # For best results, keys should be stored with corrected coordinates
+                centroid = np.array(key['centroid'])
+                if self._use_coordinate_correction:
+                    x_scale, y_scale = self._get_scale_factors()
+                    corrected_centroid = np.array([centroid[0] * x_scale, centroid[1] * y_scale])
+                else:
+                    corrected_centroid = centroid
+                
+                # Check if point is inside key (using original contour - this is approximate)
+                result = cv.pointPolygonTest(key['contour'], point, measureDist=False)
+                if result > 0:
+                    return key['midi_note']
+                
+                # Compute distance with corrected coordinates and horizontal weighting
+                dx = point[0] - corrected_centroid[0]
+                dy = point[1] - corrected_centroid[1]
+                distance = self._weighted_distance(dx, dy)
+                
+                if distance < min_distance:
+                    min_distance = distance
+                    closest_midi_note = key['midi_note']
+            
+            return closest_midi_note
+        
+        else:
+            raise ValueError(f"Unknown method: {method}. Must be one of: 'default', 'centroid', 'boundary', 'y_correction', 'full_correction'")
     
     def _compute_scale_factors(self) -> Tuple[float, float]:
         """
@@ -181,46 +286,7 @@ class FingerArucoTracker(ArucoPolygonDetector):
         """
         return np.sqrt((self.horizontal_weight * dx)**2 + (self.vertical_weight * dy)**2)
     
-    def find_closest_key_by_boundary_distance(self, x_px: float, y_px: float) -> Optional[int]:
-        """
-        Find the closest key using distance to polygon boundary instead of centroid.
-        This method mitigates y-direction bias from perspective projection.
-        
-        Args:
-            x_px: X coordinate in image space (pixels)
-            y_px: Y coordinate in image space (pixels)
-            
-        Returns:
-            MIDI note number of the closest key, 
-            or None if no key is found
-        """
-        if self.keyboard_map is None:
-            return None
-        
-        # Transform point from image space to birdseye space
-        aruco_coords = self.transform_point_from_image_to_birdseye((x_px, y_px))
-        point = np.array([aruco_coords[0], aruco_coords[1]], dtype=np.float32)
-        
-        closest_midi_note = None
-        min_distance = float('inf')
 
-        for key in self.keyboard_map:
-            # Use pointPolygonTest with measureDist=True to get signed distance
-            # Positive = inside polygon, negative = outside, value = distance to boundary
-            distance = cv.pointPolygonTest(key['contour'], point, measureDist=True)
-            
-            if distance > 0:
-                # Point is inside the key - return immediately
-                return key['midi_note']
-            
-            # For points outside, use absolute distance (negative value)
-            # This gives distance to the polygon boundary, which accounts for projection distortion
-            abs_distance = abs(distance)
-            if abs_distance < min_distance:
-                min_distance = abs_distance
-                closest_midi_note = key['midi_note']
-        
-        return closest_midi_note
     
     def transform_point_with_correction(self, x_px: float, y_px: float) -> Tuple[float, float]:
         """
@@ -246,107 +312,8 @@ class FingerArucoTracker(ArucoPolygonDetector):
         else:
             return aruco_coords[0], aruco_coords[1]
     
-    def find_closest_key_with_y_correction(self, x_px: float, y_px: float) -> Optional[int]:
-        """
-        Find the closest key using a y-direction corrected distance metric.
-        This accounts for non-uniform scaling in the perspective transformation.
-        
-        When moving directly upward in physical space, the y-coordinate in bird's-eye
-        view may decrease due to perspective distortion. This method applies a correction
-        factor to make vertical movement in physical space correspond to minimal y-change
-        in the bird's-eye view.
-        
-        Args:
-            x_px: X coordinate in image space (pixels)
-            y_px: Y coordinate in image space (pixels)
-            
-        Returns:
-            MIDI note number of the closest key, 
-            or None if no key is found
-        """
-        if self.keyboard_map is None:
-            return None
-        
-        # Transform point from image space to birdseye space
-        aruco_coords = self.transform_point_from_image_to_birdseye((x_px, y_px))
-        point = np.array([aruco_coords[0], aruco_coords[1]], dtype=np.float32)
-        
-        # Get y-scale correction factor
-        y_scale = self._get_y_scale_factor()
-        
-        closest_midi_note = None
-        min_distance = float('inf')
+ 
 
-        for key in self.keyboard_map:
-            # Check if point is inside key
-            result = cv.pointPolygonTest(key['contour'], point, measureDist=False)
-            if result > 0:
-                return key['midi_note']
-            
-            # Compute distance with y-correction and horizontal weighting
-            # Apply scale factor to y-component to account for perspective distortion
-            centroid = np.array(key['centroid'])
-            dx = point[0] - centroid[0]
-            dy = (point[1] - centroid[1]) * y_scale  # Apply correction to y-component
-            
-            # Use weighted distance (horizontal weighted more than vertical)
-            distance = self._weighted_distance(dx, dy)
-            
-            if distance < min_distance:
-                min_distance = distance
-                closest_midi_note = key['midi_note']
-        
-        return closest_midi_note
-    
-    def find_closest_key_with_full_correction(self, x_px: float, y_px: float) -> Optional[int]:
-        """
-        Find the closest key using corrected coordinates for both x and y directions.
-        This fully accounts for perspective distortion in the bird's-eye transformation.
-        
-        Args:
-            x_px: X coordinate in image space (pixels)
-            y_px: Y coordinate in image space (pixels)
-            
-        Returns:
-            MIDI note number of the closest key, 
-            or None if no key is found
-        """
-        if self.keyboard_map is None:
-            return None
-        
-        # Transform with coordinate correction
-        corrected_x, corrected_y = self.transform_point_with_correction(x_px, y_px)
-        point = np.array([corrected_x, corrected_y], dtype=np.float32)
-        
-        closest_midi_note = None
-        min_distance = float('inf')
-
-        for key in self.keyboard_map:
-            # Apply same correction to key centroid for fair comparison
-            # Note: This assumes keys were detected in uncorrected space
-            # For best results, keys should be stored with corrected coordinates
-            centroid = np.array(key['centroid'])
-            if self._use_coordinate_correction:
-                x_scale, y_scale = self._get_scale_factors()
-                corrected_centroid = np.array([centroid[0] * x_scale, centroid[1] * y_scale])
-            else:
-                corrected_centroid = centroid
-            
-            # Check if point is inside key (using original contour - this is approximate)
-            result = cv.pointPolygonTest(key['contour'], point, measureDist=False)
-            if result > 0:
-                return key['midi_note']
-            
-            # Compute distance with corrected coordinates and horizontal weighting
-            dx = point[0] - corrected_centroid[0]
-            dy = point[1] - corrected_centroid[1]
-            distance = self._weighted_distance(dx, dy)
-            
-            if distance < min_distance:
-                min_distance = distance
-                closest_midi_note = key['midi_note']
-        
-        return closest_midi_note
     
     def measure_distance_to_key(self, x_px: float, y_px: float, midi_note: int) -> Optional[float]:
         """
@@ -463,7 +430,7 @@ class FingerArucoTracker(ArucoPolygonDetector):
         Returns:
             The image with the birdseye keys drawn on it.
         """
-        birdseye_image = self.transform_image_to_birdseye(image, undistort=True, use_polygon_aspect_ratio=True)
+        birdseye_image = self.transform_image_to_birdseye(image, use_polygon_aspect_ratio=True)
         for key in self.keyboard_map:
             birdseye_image = cv.polylines(birdseye_image, [key['contour']], isClosed=True, color=(0, 255, 0), thickness=2)
             birdseye_image = cv.putText(birdseye_image, key['name'], key['centroid'], cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)

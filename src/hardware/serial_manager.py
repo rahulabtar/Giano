@@ -21,7 +21,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
 
-from protocols import GloveProtocolFreeplayMode, GloveProtocolLearningMode, PlayingMode, Hand, SensorValue, VoiceCommand
+from .protocols import GloveProtocolFreeplayMode, GloveProtocolLearningMode, PlayingMode, Hand, SensorValue, VoiceCommand
 
 from src.core.constants import SERIAL_BAUD_RATE, LEFT_PORT, RIGHT_PORT
 
@@ -633,6 +633,8 @@ class AudioBoardManager:
         """
         # TODO: handshake with audio board?
         logger.info(f"Initializing audio board manager on port: {port}")
+        self.port = None  # Initialize to avoid AttributeError
+        
         if port:
             self.port = port
         else:

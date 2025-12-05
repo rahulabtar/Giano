@@ -10,6 +10,10 @@
 // I'm a floo flammer homie all these chains on my neck I need two hammers homie
 
 
+// VELOSTAT SETUP VARIABLES
+// number of velostat sensors
+const int NUM_VELOSTAT = 5;
+
 
 /**
  * Working toward putting setups for both modes in here - freeplay and learning.
@@ -17,11 +21,21 @@
  */
 
 // Setting Type for the hand: *must manually changed before uploading to each hand*
-// IF LEFT HAND:
-#define TEENSY_HAND Hand::Right
+
+// IF LEFT HAND
+#define TEENSY_HAND Hand::Left
+
+//LEFT PINS:
+const int gVELOSTAT_PINS[NUM_VELOSTAT] = {14, 18, 19, 21, 20}; 
+
 
 // IF RIGHT HAND
 //#define TEENSY_HAND Hand::Right
+
+// RIGHT PINS:
+//const int gVELOSTAT_PINS[NUM_VELOSTAT] = {20, 21, 19, 18, 14}; 
+
+
 
 // Set button pins for left glove - CHECK THESE PLEASEEEE!!!!
 // LEFTMOST BUTTON CONTROLS SONG, RIGHT CONTROLS MODE
@@ -33,23 +47,18 @@ volatile bool gFreeplayMode = true;
 
 // Global variable for changing mode- FLAG TO CHECK IF MODE TOGGLE REQUESTED
 volatile bool gModeToggleRequested = false;
-
-// VELOSTAT SETUP VARIABLES
-// number of velostat sensors
-const int NUM_VELOSTAT = 5; 
+; 
 // array of size of # of velostat sensors, sets their pins - ADD THIS
 // thumb index 0, pinky at 4. ON LEFT GLOVE: PINKY IS LEFTMOST CONNECTOR
 // ON RIGHT GLOVE: THUMB IS LEFTMOST CONNECTOR.
 // these numbers swap order for right glove.
 
-//LEFT PINS:
-const int VELOSTAT_PINS[NUM_VELOSTAT] = {14, 18, 19, 21, 20}; 
 
-// RIGHT PINS:
-//const int VELOSTAT_PINS[NUM_VELOSTAT] = {20, 21, 19, 18, 14}; 
+
 
 // set default state of pressed vs unpressed to be unpressed
 bool gPressed = false; 
+
 // array to hold state of each sensor (pressed or unpressed)
 bool gSensorState[NUM_VELOSTAT] = {false, false, false, false, false}; 
 // threshold for determining pressed vs unpressed - CAN BE ADJUSTED
@@ -149,7 +158,7 @@ void calibrateVelostat(unsigned int SAMPLE_COUNT = 310, unsigned int SAMPLE_PERI
     sumSq = 0;
 
     for (unsigned int i = 0; i < SAMPLE_COUNT; i++) {
-      int reading = analogRead(VELOSTAT_PINS[finger]);
+      int reading = analogRead(gVELOSTAT_PINS[finger]);
 
       sum += reading;
       sumSq += (long)reading * (long)reading;
@@ -186,7 +195,7 @@ void calibrateVelostat(unsigned int SAMPLE_COUNT = 310, unsigned int SAMPLE_PERI
     sumSq = 0;
 
     for (unsigned int i = 0; i < SAMPLE_COUNT; i++) {
-      int reading = analogRead(VELOSTAT_PINS[finger]);
+      int reading = analogRead(gVELOSTAT_PINS[finger]);
 
       sum += reading;
       sumSq += (long)reading * (long)reading;
@@ -221,7 +230,7 @@ void calibrateVelostat(unsigned int SAMPLE_COUNT = 310, unsigned int SAMPLE_PERI
     sumSq = 0;
 
     for (int i = 0; i < SAMPLE_COUNT; i++) {
-      int reading = analogRead(VELOSTAT_PINS[finger]);
+      int reading = analogRead(gVELOSTAT_PINS[finger]);
 
       sum += reading;
       sumSq += (long)reading * (long)reading;
@@ -326,7 +335,7 @@ int buttonPressCount(unsigned long timeWindow, int buttonPin) {
  */
 void checkFingerPress() {
   for (unsigned int i = 0; i < NUM_VELOSTAT; i++) {
-    int raw = analogRead(VELOSTAT_PINS[i]);
+    int raw = analogRead(gVELOSTAT_PINS[i]);
     
     bool currentlyPressed = raw >= (gBaseline[i] + THRESHOLD);
 
@@ -542,10 +551,12 @@ void setup() {
     // if freeplay mode only call velostat and flex sensor calibration
     // if learning mode call velostat, flex, and haptic calibration (needs mux)
     if (gFreeplayMode) {
-      calibrateVelostat(); // only calibrate velostat and flex sensors
+      
+    // NOTE: skip calibration for now
+    // calibrateVelostat(); // only calibrate velostat and flex sensors
     } else {
-      calibrateVelostat(); // velostat and flex sensors
-      calibrateHaptics(); // haptics calibration function
+    //   calibrateVelostat(); // velostat and flex sensors
+    //   calibrateHaptics(); // haptics calibration function
 
       /**
       * You have selected learning mode. Please select a song by pressing the rightmost button
@@ -553,15 +564,17 @@ void setup() {
       */
       if (TEENSY_HAND == Hand::Left) {
           // Step 5: SONG SELECTION 
-          Serial.write(static_cast<uint8_t>(VoiceCommands::SELECT_SONG));
+          if (Serial.availableForWrite()) {Serial.write(static_cast<uint8_t>(VoiceCommands::SELECT_SONG));}
           delay(7500);
 
-          // detect and wait to see how many times button was pressed, send that 
-          // number back to the python unit - only for left hand
+        // detect and wait to see how many times button was pressed, send that 
+        // number back to the python unit - only for left hand
 
-          int songPressCount = buttonPressCount(6000, BUTTON_SONG); // 6 second window to press button
-          Serial.write(static_cast<uint8_t>(songPressCount)); // send selected song number back to python
-      }
+
+        //   int songPressCount = buttonPressCount(6000, BUTTON_SONG); // 6 second window to press button
+        //   Serial.write(static_cast<uint8_t>(songPressCount)); // send selected song number back to python
+          delay(10);
+      } 
     }
 
 
@@ -596,32 +609,33 @@ void loop() {
     // RETURN TO SETUP LOGIC TO CHANGE MODES??? 
 
 
-  if (gModeToggleRequested) { // THIS WILL ONLY BE CALLED ON LEFT HAND
+  // button interrupt handler
+  // if (gModeToggleRequested) { // THIS WILL ONLY BE CALLED ON LEFT HAND
 
-        noInterrupts();                    
-        gModeToggleRequested = false;
-        bool currentMode = gFreeplayMode;
-        interrupts();
+  //   noInterrupts();                    
+  //   gModeToggleRequested = false;
+  //   bool currentMode = gFreeplayMode;
+  //   interrupts();
 
-        // send new mode to python to assign to other gloves
-        Serial.write(static_cast<uint8_t>(currentMode));
-        delay(500); // MIGHT NEED TO CHANGE THIS TO ALLOW OTHER GLOVE TIME TO UPDATE
+  //   // send new mode to python to assign to other gloves
+  //   Serial.write(static_cast<uint8_t>(currentMode));
+  //   delay(500); // MIGHT NEED TO CHANGE THIS TO ALLOW OTHER GLOVE TIME TO UPDATE
 
-        // If we JUST switched into LEARNING MODE, run song selection
-        if (!currentMode) {
+  //   // If we JUST switched into LEARNING MODE, run song selection
+  //   if (!currentMode) {
 
-            if (TEENSY_HAND == Hand::Left) {
+  //       if (TEENSY_HAND == Hand::Left) {
 
-                Serial.write(static_cast<uint8_t>(VoiceCommands::SELECT_SONG));
-                delay(7500);
+  //           Serial.write(static_cast<uint8_t>(VoiceCommands::SELECT_SONG));
+  //           delay(7500);
 
-                int songPressCount = buttonPressCount(6000, BUTTON_SONG);
-                Serial.write(static_cast<uint8_t>(songPressCount));
-            }
-        }
+  //           int songPressCount = buttonPressCount(6000, BUTTON_SONG);
+  //           Serial.write(static_cast<uint8_t>(songPressCount));
+  //       }
+  //   }
 
-        // If we switched back to FREEPLAY, just comtinue to main loop
-    }
+  //       // If we switched back to FREEPLAY, just comtinue to main loop
+  // }
 
 
 

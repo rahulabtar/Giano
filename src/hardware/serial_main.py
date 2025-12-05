@@ -1,9 +1,10 @@
-from serial_manager import LeftGloveSerialManager, RightGloveSerialManager, AudioBoardManager
-from teensy_connector import teensy_connect
-from protocols import PlayingMode, Hand, VoiceCommand
+from .serial_manager import LeftGloveSerialManager, RightGloveSerialManager, AudioBoardManager
+from .protocols import PlayingMode, Hand, VoiceCommand
 from src.core.constants import LEFT_PORT, RIGHT_PORT, SERIAL_BAUD_RATE
 import time
 import logging
+
+# NOTE: this needs to be 
 
 num_gloves = 1
 
@@ -35,11 +36,13 @@ def teensy_connect():
 
   return glove_left, glove_right, audio_board
 
+# TODO: encapsulate in function
 
 if __name__ == "__main__":
   left_glove, right_glove, audio_board = teensy_connect()
 
   print("swag is swag")
+
 
   # entering calibation process
   time.sleep(1)
@@ -47,7 +50,7 @@ if __name__ == "__main__":
     command = left_glove.receive_byte()
     if command == VoiceCommand.FLUSH.value:
       logger.info("Flush command received")
-      continue
+      break
     if command is not None:
       print(f"command is {command}")
 

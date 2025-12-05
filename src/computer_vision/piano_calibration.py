@@ -11,12 +11,15 @@ from typing import List, Dict, Tuple, Optional, Union
 import time
 import sys
 import os
+import logging
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from src.computer_vision.finger_aruco_tracker import FingerArucoTracker
 from src.computer_vision.aruco_pose_tracker import ArucoPoseTracker, TrackingMode
 from src.core.constants import CAMERA_CALIBRATION_PATH, MARKER_IDS, MARKER_SIZE, IN_TO_METERS
 from src.core.utils import name_from_midi
+
+logger = logging.getLogger(__name__)
 
 class PianoCalibration:
   """Class for calibrating and detecting piano keys using ridge detection."""
@@ -84,7 +87,7 @@ class PianoCalibration:
           return (1, captured_image)
         elif key == ord('p'):
           captured_image = None  # Go back to live view
-          cv.destroyWindow("Press c to confirm or p to retake")
+          cv.destroyWindow("Markers found! If all four markers have been detected, press c to confirm or p to try again")
         elif key == ord('q'):
           cv.destroyAllWindows()
           return (2, None)
@@ -240,7 +243,7 @@ class PianoCalibration:
     
     # Filter out small noise regions (keep only regions above threshold)
     # Adjust min_area based on your noise level - smaller values keep more, larger removes more
-    min_area = 200  # Minimum pixels to keep (removes isolated 1-2 pixel noise)
+    min_area = 500  # Minimum pixels to keep (removes isolated noise and shadow noise)
     walls_cleaned = np.zeros_like(boundary_mask)
     
     for label_id in range(1, num_labels):  # Skip background (label 0)
@@ -248,10 +251,10 @@ class PianoCalibration:
       if area >= min_area:
         # Keep this region
         walls_cleaned[labels == label_id] = 255
-
-    cv.imshow('walls_cleaned', walls_cleaned)
-    cv.waitKey(0)
-    cv.destroyAllWindows()
+    if debug_mode:
+      cv.imshow('walls_cleaned', walls_cleaned)
+      cv.waitKey(0)
+      cv.destroyAllWindows()
 
     
     # 1) Vertical closing: connects broken vertical boundary segments
@@ -306,11 +309,18 @@ class PianoCalibration:
     
     countour_image = cv.cvtColor(boundary_mask.copy(), cv.COLOR_GRAY2BGR)
     contour_image = cv.drawContours(countour_image, contours, -1, (255, 0, 0), 2)
-    cv.imshow('contour image', contour_image)
-    cv.waitKey(0)
-    cv.destroyAllWindows()
+    if debug_mode:
+      cv.imshow('contour image', contour_image)
+      cv.waitKey(0)
+      cv.destroyAllWindows()
 
     keys = []
+    
+    # Statistics for debugging
+    filtered_by_area = 0
+    filtered_by_aspect = 0
+    filtered_by_moments = 0
+    total_contours = len(contours)
 
 
 
@@ -331,15 +341,26 @@ class PianoCalibration:
         # Filter out small artifacts and overly large regions
         # Small artifacts: less than 0.1% of image area (noise, specks)
         # Large regions: more than 40% of image area (likely errors)
-        min_area = 0.01 * boundary_mask.size  # Minimum area threshold
-        max_area = 0.4 * boundary_mask.size    # Maximum area threshold
+        min_area = 0.001 * boundary_mask.size  # Minimum area threshold
         
+        
+        # max_area = 0.4 * boundary_mask.size    # Maximum area threshold
+        max_area = boundary_mask.size
+
         if area < min_area or area > max_area:
+            filtered_by_area += 1
+            if debug_mode:
+                logger.info(f"Filtered by area: area={area:.0f}, min={min_area:.0f}, max={max_area:.0f}, bbox=({x},{y},{w},{h})")
             continue
         
         # Also filter by aspect ratio to catch elongated artifacts
-        aspect = w / h if h > 0 else 0
-        if aspect > 0.5:
+        # Piano keys are taller than wide, so aspect (w/h) should be < 1.0
+        # White keys: typically aspect ~0.2-0.4, Black keys: typically aspect ~0.15-0.3
+        aspect = w / h if h > 0 and w > 0 else 0
+        if aspect > 0.5:  # Filter out anything wider than half its height
+            filtered_by_aspect += 1
+            if debug_mode:
+                logger.info(f"Filtered by aspect ratio: aspect={aspect:.2f}, bbox=({x},{y},{w},{h})")
             continue
 
         # The spatial moments
@@ -351,6 +372,9 @@ class PianoCalibration:
 
         M = cv.moments(cnt)
         if M['m00'] == 0:
+            filtered_by_moments += 1
+            if debug_mode:
+                logger.info(f"Filtered by zero moments: bbox=({x},{y},{w},{h})")
             continue
         cx = int(M['m10'] / M['m00'])
         cy = int(M['m01'] / M['m00'])
@@ -366,7 +390,8 @@ class PianoCalibration:
         cnt = self.finger_tracker._map_coords_to_uncropped(cnt, y_offset)
         poly = self.finger_tracker._map_coords_to_uncropped(poly, y_offset)
         cx, cy = self.finger_tracker._map_coords_to_uncropped((cx, cy), y_offset)
-        
+        if debug_mode:
+          logger.info(f"Adding key: {x}, {y}, {w}, {h}, {cx}, {cy}, {area}")
         keys.append({
             'contour': cnt,        # full contour
             'poly': poly,          # simplified polygon
@@ -376,6 +401,25 @@ class PianoCalibration:
             'y': y,
             'area': area
         }) 
+    # Print filtering statistics
+    if debug_mode:
+        logger.info(f"Contour filtering stats: total={total_contours}, kept={len(keys)}, "
+                   f"filtered_by_area={filtered_by_area}, filtered_by_aspect={filtered_by_aspect}, "
+                   f"filtered_by_moments={filtered_by_moments}")
+    # Show the bounding boxes of the found keys over the contour_image, with the bounding boxes in green
+
+    # Only if debug_mode is enabled and contour_image is available in this function's context
+    if debug_mode and 'contour_image' in locals() and contour_image is not None:
+        # Draw green bounding boxes for each discovered key
+        debug_img = contour_image.copy()
+        for k in keys:
+            x, y, w, h = k['bbox']
+            cv.rectangle(debug_img, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        # Optionally show the image in a window for dev use (comment if running headless)
+        cv.imshow("Detected Key Bounding Boxes", debug_img)
+        cv.waitKey(0)
+        cv.destroyAllWindows()
+    
     # Sort keys backwards by x (horizontal start of boundingRect)
     # The camera is facing the user
     # TODO: Make this more robust by requesting orientation of piano
@@ -448,6 +492,7 @@ class PianoCalibration:
           cap: cv.VideoCapture,
           start_midi: int = 48,
           mask_crop_pct: float = 0.09,
+          expected_keys: int | None = None,
           debug_mode: bool = False) -> tuple[int, Dict]:
     """
     Complete pipeline: detect ridge mask, crop markers, label keys, and draw results.
@@ -481,7 +526,7 @@ class PianoCalibration:
       
       # Label keys in non-cropped image space
       labeled_keys = self._label_keys_from_boundary_mask(
-          cropped_mask, start_midi, close_px=3, y_offset=y_offset, debug_mode=debug_mode
+          cropped_mask, start_midi, close_px=3, expected_keys=expected_keys, y_offset=y_offset, debug_mode=debug_mode
       )
       
       # Draw labeled keys on grayscale image

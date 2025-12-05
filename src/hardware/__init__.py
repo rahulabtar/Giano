@@ -1,28 +1,38 @@
 """Hardware communication modules for glove controller and audio board."""
 
 from .serial_manager import (
-    SerialManager,
-    GloveSerialManager,
-    AudioSerialManager,
+    LeftGloveSerialManager,
+    RightGloveSerialManager,
+    AudioBoardManager,
     BaseSerialManager
 )
 from .protocols import (
-    GloveProtocol,
-    AudioProtocol,
+    GloveProtocolFreeplayMode,
+    GloveProtocolLearningMode,
+    PlayingMode,
+    Hand,
+    SensorValue,
+    VoiceCommand,
     ActionCode,
-    MIDIControl,
-    map_mediapipe_to_motor
+    
 )
 
 __all__ = [
-    'SerialManager',
-    'GloveSerialManager',
-    'AudioSerialManager',
+    'LeftGloveSerialManager',
+    'RightGloveSerialManager',
+    'AudioBoardManager',
     'BaseSerialManager',
-    'GloveProtocol',
-    'AudioProtocol',
+    'GloveProtocolFreeplayMode',
+    'GloveProtocolLearningMode',
+    'PlayingMode',
+    'Hand',
+    'SensorValue',
+    'VoiceCommand',
     'ActionCode',
     'MIDIControl',
-    'map_mediapipe_to_motor'
+    'map_mediapipe_to_motor',
+    'AudioProtocol',
+    'ActionCode',
+    
 ]
 
