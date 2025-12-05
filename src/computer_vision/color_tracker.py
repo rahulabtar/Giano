@@ -409,9 +409,11 @@ class ColorTracker:
 
             if draw_centroids:
                 centroids = self.get_centroids(color_name)
-                for centroid in centroids:
-                    x, y = centroid
-                    cv2.drawMarker(frame, (int(x), int(y)), (0, 255, 0), cv2.MARKER_CROSS, 10)
+                for i, color_name in enumerate(centroids.keys()):
+                    centroid_list = centroids[color_name]
+                    for centroid in centroid_list:
+                        x, y = centroid
+                        cv2.drawMarker(frame, (int(x), int(y)), (0, 255, 0), cv2.MARKER_CROSS, 10)
         
         return frame
     

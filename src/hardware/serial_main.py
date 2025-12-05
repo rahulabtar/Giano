@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 # MAY NEED THREADSAFETY
 
 
-def teensy_connect():
+def teensy_connect() -> tuple[LeftGloveSerialManager, RightGloveSerialManager, AudioBoardManager]:
   audio_board = AudioBoardManager()
 
   glove_1 = LeftGloveSerialManager(baud_rate=SERIAL_BAUD_RATE)
@@ -36,10 +36,14 @@ def teensy_connect():
 
   return glove_left, glove_right, audio_board
 
-# TODO: encapsulate in function
+def teensy_calibrate(left_glove: LeftGloveSerialManager, right_glove: RightGloveSerialManager, audio_board: AudioBoardManager):
+  """
+  Assumes connected to the gloves and audio board
+  """
 
-if __name__ == "__main__":
-  left_glove, right_glove, audio_board = teensy_connect()
+  # TODO: check connection to the gloves and audio board
+  if not left_glove.is_connected() or not right_glove.is_connected() or not audio_board.is_connected():
+    raise ValueError("Not connected to the gloves and audio board")
 
   print("swag is swag")
 
@@ -51,15 +55,19 @@ if __name__ == "__main__":
     if command == VoiceCommand.FLUSH.value:
       logger.info("Flush command received")
       break
+    
     if command is not None:
       print(f"command is {command}")
 
+      # TODO: ADD COMMENTS
       if (command == PlayingMode.LEARNING_MODE.value):
         left_glove._play_mode = PlayingMode.LEARNING_MODE
         logger.info("Learning mode")
+      
       elif (command == PlayingMode.FREEPLAY_MODE.value):
         left_glove._play_mode = PlayingMode.FREEPLAY_MODE
         logger.info("Freeplay mode")
+      
       else:
         command_enum = VoiceCommand(command)
         audio_board.play_voice_command(command_enum)
@@ -67,8 +75,15 @@ if __name__ == "__main__":
     else:
       print("No command received")
       time.sleep(0.1)
+    
+    return left_glove, right_glove, audio_board
 
 
+if __name__ == "__main__":
+  left_glove, right_glove, audio_board = teensy_connect()
+
+  teensy_calibrate(left_glove, right_glove, audio_board)
+    
 
 
   

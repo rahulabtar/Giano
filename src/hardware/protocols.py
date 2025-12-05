@@ -51,11 +51,13 @@ class LearningModeGloveInstructionSet:
     commandCode: np.uint8
     distanceToNote: np.float32
 
-# Matched to firmware
+# Matched to firmware, ordered
+# this should be a uint_8
 class FreeplayModeGloveInstructionSet:
     hand: Hand
+    fingerIndex: SensorNumberLeft
+    velocity: np.uint8
     sensorValue: SensorValue
-    sensorNumber: SensorNumberLeft
 
 
 """The octave instruction set will be sent back to Python

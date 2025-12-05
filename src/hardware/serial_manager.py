@@ -634,7 +634,9 @@ class AudioBoardManager:
         # TODO: handshake with audio board?
         logger.info(f"Initializing audio board manager on port: {port}")
         self.port = None  # Initialize to avoid AttributeError
-        
+        self._is_connected = False
+
+
         if port:
             self.port = port
         else:
@@ -653,7 +655,12 @@ class AudioBoardManager:
             if not self.port:
                 raise ValueError("No Teensy MIDI port found")
 
+        # open mido port
         self.out = mido.open_output(self.port)
+        if not self.out:
+            raise ValueError(f"Failed to open MIDI output port: {self.port}")
+
+        self._is_connected = True
         logger.info(f"Audio board manager initialized on port: {self.port}")
 
     def note_on(self, note: int, velocity: int = 100):
@@ -700,16 +707,15 @@ class AudioBoardManager:
         
         # TODO: figure out how to not wait for 10 fucking seconds
 
-        
+    def is_connected(self) -> bool:
+        return self._is_connected
 
 
 
 
 def main():
     # example usage
-    left_glove = LeftGloveSerialManager(port=LEFT_PORT, play_mode=PlayingMode.FREEPLAY_MODE)
-    right_glove = RightGloveSerialManager(port=RIGHT_PORT, play_mode=PlayingMode.FREEPLAY_MODE)
-    audio_board = AudioProtocol()
+    teensy_connect()
 
     result = left_glove.connect()
     while not result:

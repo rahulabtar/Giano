@@ -1,3 +1,6 @@
+# TODO: for piano calibration, I can just poll the color similar to the way it gets them in color_tracker.py
+
+
 # Add project root to Python path for direct execution
 from operator import eq
 import sys
@@ -36,10 +39,7 @@ except ImportError as e:
     raise
 
 
-options = HandLandmarkerOptions(
-    base_options=BaseOptions(model_asset_path=HAND_MODEL_PATH, delegate='GPU'), 
-    running_mode='LIVE_STREAM'
-)
+
 
 
 def resize_for_display(image: np.ndarray, max_width: int = 1280, max_height: int = 720) -> np.ndarray:
@@ -114,7 +114,7 @@ def main():
         return
     # initialize piano calibration
     # initialize aruco stuff
-    tracker = ColorTracker(max_area=50000, max_number_of_colors=5)
+    tracker = ColorTracker(min_area=500,max_area=50000, max_number_of_colors=5, max_trackers_per_color=2, max_total_trackers=10)
 
     aruco_pose_tracker = ArucoPoseTracker(camera_matrix, dist_coeffs, mode = TrackingMode.STATIC)
     finger_aruco = FingerArucoTracker(camera_matrix, dist_coeffs,
@@ -198,21 +198,41 @@ def main():
             success, _ = finger_aruco.get_marker_polygon(MARKER_IDS, poses)
             image = finger_aruco.draw_box(image)
 
-            
+        # ============================= HAND FINDER PART =============================
         birdseye_image = finger_aruco.transform_image_to_birdseye(image)
       
         tracked_image = tracker.process_frame(birdseye_image, draw_contours=True, draw_colors=True)
         # we'll get both of these
         tracked_boxes = tracker.get_tracked_boxes('all')
 
-
+        # get the centroids of all colors
         tracked_centroids = tracker.get_centroids('all')
         
-
+        
+        # if playing_mode = freeplay
+        # find the closest key for each bbox thing
+        for color_name, bboxes in tracked_boxes.items():
+            color_tracking_points = []
+            for i, bbox in enumerate(bboxes):
+                x, y, w, h = bbox
+                # get the closest point to the edge of the finger
+                tracking_point = int(x + w/2), int(y + h)
+                midi_number = finger_aruco.find_closest_key(tracking_point[0], tracking_point[1], method='centroid')
+                
+                # this might break
+                tracked_image = cv.drawMarker(tracked_image, tracking_point, (0, 255, 0), cv.MARKER_CROSS, 10)
+                midi_note_name = name_from_midi(midi_number)
+                print(f"Color {color_name} bbox {i}: {x}, {y}, {w}, {h}: {midi_note_name}")
+                color_tracking_points.append((tracking_point[0], tracking_point[1], midi_number))
+            
+            # sort by x coordinate, because the keyboard is backwards, assume the leftmost x is the righthand
+            # TODO: see if the kalman filter tracks the hand
+            sorted_color_tracking_points = sorted(color_tracking_points, key=lambda x: x[0])
+            
         cv.imshow("Tracked", tracked_image)
 
         # find hands, return drawn image
-        # HAND FINDER PART
+        
         
         # birdseye_image = finger_aruco.draw_birdseye_keys(image, lm_list, finger_keys)
 
