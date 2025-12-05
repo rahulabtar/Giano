@@ -3,7 +3,9 @@
 #include <Wire.h>
 #include "Adafruit_DRV2605.h"
 
-#define TEENSY_HAND Hand::Left
+//#define TEENSY_HAND Hand::Left
+
+#define TEENSY_HAND Hand::Right
 
 const int PRESS_THRESHOLD = 45;   // threshold to register a press
 const int RELEASE_THRESHOLD = 25; // threshold to register a release (hysteresis) needs a lesser value 
@@ -36,10 +38,10 @@ const int NUM_HAPTICS = 7;
 // THIS IS ACTUALLY SETUP FOR SELECT LINES
 
 // LEFT PINS:
-const int HAPTIC_PINS[NUM_HAPTICS] = {2, 1, 0, 6, 5, 4, 3};
+//const int HAPTIC_PINS[NUM_HAPTICS] = {2, 1, 0, 6, 5, 4, 3};
 
 //Right Pins
-//const int HAPTIC_PINS[NUM_HAPTICS] = {3, 4, 5, 6, 0, 1, };
+const int HAPTIC_PINS[NUM_HAPTICS] = {5, 6, 0, 1, 2, 4, 3};
 
 // RIGHT PINS:
 //const int HAPTIC_PINS[NUM_HAPTICS] = {4, 5, 6, 0, 1, 3, 2};
@@ -255,7 +257,7 @@ void calibrateHaptics() {
     drv.go();
     Serial.println("  - Effect triggered");
     
-    delay(100); // wait longer for effect to complete and be audible
+    delay(1000); // wait longer for effect to complete and be audible
 
     Serial.print("Haptic Motor at MUX line ");
     Serial.print(i);
