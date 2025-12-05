@@ -51,26 +51,34 @@ def teensy_calibrate(left_glove: LeftGloveSerialManager, right_glove: RightGlove
   # entering calibation process
   time.sleep(1)
   while True:
+    # read byte from left_glove
+    # blocks until a byte is received
     command = left_glove.receive_byte()
+    
+    #flush will break the loop
     if command == VoiceCommand.FLUSH.value:
       logger.info("Flush command received")
       break
     
+    # print command
     if command is not None:
       print(f"command is {command}")
 
-      # TODO: ADD COMMENTS
-      if (command == PlayingMode.LEARNING_MODE.value):
-        left_glove._play_mode = PlayingMode.LEARNING_MODE
-        logger.info("Learning mode")
-      
-      elif (command == PlayingMode.FREEPLAY_MODE.value):
-        left_glove._play_mode = PlayingMode.FREEPLAY_MODE
-        logger.info("Freeplay mode")
-      
-      else:
-        command_enum = VoiceCommand(command)
-        audio_board.play_voice_command(command_enum)
+      match command:
+        # Learning mode
+        case PlayingMode.LEARNING_MODE.value:
+          left_glove._play_mode = PlayingMode.LEARNING_MODE
+          logger.info("Learning mode command received")
+
+        # Freeplay mode
+        case PlayingMode.FREEPLAY_MODE.value:
+          left_glove._play_mode = PlayingMode.FREEPLAY_MODE
+          logger.info("Freeplay mode command received")
+
+        # Voice commands
+        case _:
+          command_enum = VoiceCommand(command)
+          audio_board.play_voice_command(command_enum)
       time.sleep(0.1)
     else:
       print("No command received")
