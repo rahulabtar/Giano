@@ -24,9 +24,8 @@ try:
     from src.computer_vision.aruco_pose_tracker import ArucoPoseTracker
     from src.computer_vision.aruco_polygon_detector import ArucoPolygonDetector
     from src.computer_vision.aruco_pose_tracker import TrackingMode
-    from src.computer_vision.hand_tracking import HandTracker 
+    from src.computer_vision.color_tracker import ColorTracker
     from src.computer_vision.finger_aruco_tracker import FingerArucoTracker
-    from src.computer_vision.finger_state_tracker import FingerStateTracker, FingerState
     from src.hardware.serial_manager import LeftGloveSerialManager, RightGloveSerialManager, AudioBoardManager
     from src.hardware.serial_main import teensy_connect
     from src.hardware.protocols import ActionCode, PlayingMode, Hand, SensorValue, VoiceCommand
@@ -115,13 +114,13 @@ def main():
         return
     # initialize piano calibration
     # initialize aruco stuff
-    tracker = HandTracker(detection_con=0.2, track_con=0.2)
+    tracker = ColorTracker(max_area=50000, max_number_of_colors=5)
+
     aruco_pose_tracker = ArucoPoseTracker(camera_matrix, dist_coeffs, mode = TrackingMode.STATIC)
     finger_aruco = FingerArucoTracker(camera_matrix, dist_coeffs,
                                       image_size = (int(cap.get(cv.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv.CAP_PROP_FRAME_HEIGHT))),
                                       correct_camera_distortion = True)
 
-    finger_tracker = FingerStateTracker(debounce_time=0.05)
     
     piano_calibrator = PianoCalibration(camera_matrix, 
                                         dist_coeffs, 
@@ -170,7 +169,9 @@ def main():
     finger_aruco.set_keyboard_map(piano_calibration_result['labeled_keys'])
     
     frame_count = 0
-    # MAIN LOOP
+    
+    
+    # ================================================ MAIN LOOP ================================================
     while True:
         success, image = cap.read()
         if not success:
@@ -197,11 +198,27 @@ def main():
             success, _ = finger_aruco.get_marker_polygon(MARKER_IDS, poses)
             image = finger_aruco.draw_box(image)
 
-      
             
-            frame_count+=1
-            if frame_count >= 30:
-                frame_count=0
+        birdseye_image = finger_aruco.transform_image_to_birdseye(image)
+      
+        tracked_image = tracker.process_frame(birdseye_image, draw_contours=True, draw_colors=True)
+        # we'll get both of these
+        tracked_boxes = tracker.get_tracked_boxes('all')
+
+
+        tracked_centroids = tracker.get_centroids('all')
+        
+
+        cv.imshow("Tracked", tracked_image)
+
+        # find hands, return drawn image
+        # HAND FINDER PART
+        
+        # birdseye_image = finger_aruco.draw_birdseye_keys(image, lm_list, finger_keys)
+
+        frame_count+=1
+        if frame_count >= 30:
+            frame_count=0
 
         
         
@@ -259,45 +276,13 @@ def main():
         # audio_status = "A" if connections['audio'] else "a"
         # status_text = f"{glove_status}{audio_status}"
         # cv.putText(image, status_text, (10, 30), font, font_scale, (255, 255, 0), thickness)
-        # find hands, return drawn image
-        # HAND FINDER PART
-        tracker.hands_finder(image, draw=False)
-        lm_list, absolute_pos = tracker.position_finder(image, hand_no = 0, draw=True)
 
-        finger_keys = {}
-        for landmark in lm_list:
-            lm_id, x_px, y_px = landmark[0], landmark[1], landmark[2]
-            if lm_id in [4,8,12,16,20] and (x_px != 0 and y_px != 0):
-                midi_note = finger_aruco.find_closest_key(x_px, y_px)
-                name, is_black_from_midi = name_from_midi(midi_note)
-                
-                distance = finger_aruco.measure_distance_to_key(x_px, y_px, midi_note)
-                if lm_id == 4:
-                    distance_to_keys = {}
-                    
-                    closest_key_full_correction = finger_aruco.find_closest_key(x_px, y_px, method='full_correction')
-                    closest_key_y_correction = finger_aruco.find_closest_key(x_px, y_px, method='y_correction')
-                    closest_key_boundary = finger_aruco.find_closest_key(x_px, y_px, method='boundary')
-                    closest_key_centroid = finger_aruco.find_closest_key(x_px, y_px, method='centroid')
-                    
-                    closest_midi_full_correction = name_from_midi(closest_key_full_correction)
-                    closest_midi_y_correction = name_from_midi(closest_key_y_correction)
-                    closest_midi_boundary = name_from_midi(closest_key_boundary)
-                    closest_midi_centroid = name_from_midi(closest_key_centroid)
 
-                    print(f"Closest key full correction: {closest_midi_full_correction} | Closest key y correction: {closest_midi_y_correction} \
-                    Closest key boundary: {closest_midi_boundary} | Closest key centroid: {closest_midi_centroid}")
-                finger_keys[lm_id] = midi_note
-        
-        if len(lm_list) > 0:
-            birdseye_image = finger_aruco.draw_birdseye_keys(image, lm_list, finger_keys)
             # birdseye_image = finger_aruco.transform_image_to_orthographic_plane(image, poses, plane_extent_meters=(2.0, 0.6), output_size=(1280, 720))
             # Resize for display if image is too large
             # display_image = resize_for_display(birdseye_image, max_width=1280, max_height=720)
-            cv.imshow("Birdseye", birdseye_image)
-            cv.imshow("Original", image)
-        else:
-            cv.imshow("Original", image)
+        cv.imshow("Birdseye", birdseye_image)
+        cv.imshow("Original", image)
 
         # Exit the loop if the 'q' key is pressed
         if cv.waitKey(1) & 0xFF == ord('q'):

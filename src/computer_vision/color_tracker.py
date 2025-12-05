@@ -4,7 +4,7 @@ from collections import defaultdict
 from typing import List, Tuple, Dict, Optional
 
 # NOTE: Ideas. Make sure to update the README.md with the new color tracker.
-# 
+# I want to calibrate the colors using the color of the the white and black on the piano I think
 
 class BoundingBoxKalmanFilter:
     """
@@ -146,7 +146,9 @@ class ColorTracker:
                  max_height: int = 200,
                  dilation_kernel_size: int = 5,
                  max_association_distance: int = 100,
-                 max_number_of_colors: int = 5):
+                 max_number_of_colors: int = 5,
+                 max_trackers_per_color: Optional[int] = None,
+                 max_total_trackers: Optional[int] = None):
         """
         Initialize ColorTracker.
         
@@ -161,6 +163,9 @@ class ColorTracker:
             max_height: Maximum bounding box height
             dilation_kernel_size: Size of dilation kernel for mask processing
             max_association_distance: Maximum distance for associating detections to trackers
+            max_number_of_colors: Maximum number of color ranges per color name
+            max_trackers_per_color: Maximum number of trackers allowed per color (None = unlimited)
+            max_total_trackers: Maximum total number of trackers across all colors (None = unlimited)
         """
         self.color_ranges = color_ranges or self.DEFAULT_COLOR_RANGES
         self.bgr_colors = bgr_colors or self.DEFAULT_BGR_COLORS
@@ -171,6 +176,8 @@ class ColorTracker:
         self.max_width = max_width
         self.max_height = max_height
         self.max_association_distance = max_association_distance
+        self.max_trackers_per_color = max_trackers_per_color
+        self.max_total_trackers = max_total_trackers
         
         # Morphology kernel for dilation
         self.kernel = np.ones((dilation_kernel_size, dilation_kernel_size), "uint8")
@@ -263,6 +270,37 @@ class ColorTracker:
         
         return detections
     
+    def _get_total_tracker_count(self) -> int:
+        """
+        Get the total number of trackers across all colors.
+        
+        Returns:
+            Total number of active trackers
+        """
+        return sum(len(trackers) for trackers in self.kalman_trackers.values())
+    
+    def _can_create_tracker(self, color_name: str) -> bool:
+        """
+        Check if a new tracker can be created for the given color.
+        
+        Args:
+            color_name: Name of the color
+            
+        Returns:
+            True if a new tracker can be created, False otherwise
+        """
+        # Check per-color limit
+        if self.max_trackers_per_color is not None:
+            if len(self.kalman_trackers[color_name]) >= self.max_trackers_per_color:
+                return False
+        
+        # Check total limit
+        if self.max_total_trackers is not None:
+            if self._get_total_tracker_count() >= self.max_total_trackers:
+                return False
+        
+        return True
+    
     def _update_trackers(self, color_name: str, detections: List[Tuple[int, int, int, int]]):
         """
         Update Kalman trackers for a specific color with new detections.
@@ -297,16 +335,18 @@ class ColorTracker:
                 # No detection associated - increment missed counter
                 tracker.increment_missed()
         
-        # Create new trackers for unassociated detections
-        for j, detection in enumerate(detections):
-            if j not in used_detections:
-                new_tracker = BoundingBoxKalmanFilter(detection)
-                self.kalman_trackers[color_name].append(new_tracker)
-        
-        # Remove old trackers that haven't been detected for a while
+        # Remove old trackers that haven't been detected for a while (before creating new ones)
         self.kalman_trackers[color_name] = [
             t for t in self.kalman_trackers[color_name] if not t.should_remove()
         ]
+        
+        # Create new trackers for unassociated detections (respecting limits)
+        for j, detection in enumerate(detections):
+            if j not in used_detections:
+                if self._can_create_tracker(color_name):
+                    new_tracker = BoundingBoxKalmanFilter(detection)
+                    self.kalman_trackers[color_name].append(new_tracker)
+                # If limit reached, silently skip creating new tracker
     
     def _draw_tracked_boxes(self, frame: np.ndarray, color_name: str, draw_colors: bool = True):
         """
@@ -335,7 +375,7 @@ class ColorTracker:
                 cv2.putText(frame, f"{color_name}", (x, y - 10),
                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
     
-    def process_frame(self, frame: np.ndarray, draw_contours: bool = True, draw_colors: bool = True) -> np.ndarray:
+    def process_frame(self, frame: np.ndarray, draw_contours: bool = True, draw_colors: bool = True, draw_centroids: bool = True) -> np.ndarray:
         """
         Process a single frame and update all trackers.
         
@@ -366,6 +406,12 @@ class ColorTracker:
             
             # Draw tracked boxes
             self._draw_tracked_boxes(frame, color_name, draw_colors)
+
+            if draw_centroids:
+                centroids = self.get_centroids(color_name)
+                for centroid in centroids:
+                    x, y = centroid
+                    cv2.drawMarker(frame, (int(x), int(y)), (0, 255, 0), cv2.MARKER_CROSS, 10)
         
         return frame
     
@@ -374,21 +420,23 @@ class ColorTracker:
         Get all currently tracked bounding boxes.
         
         Args:
-            color_name: If provided, only return boxes for this color. Otherwise return all.
+            color_name: If provided, only return boxes for this color. 'all' to return all colors.
             
         Returns:
             Dictionary mapping color names to lists of (x, y, w, h) bounding boxes
         """
-        if color_name:
+        if color_name in self.kalman_trackers.keys():
             return {
                 color_name: [tracker.get_bbox() for tracker in self.kalman_trackers[color_name]]
             }
-        else:
+        elif color_name == 'all' or color_name is None:
             return {
                 name: [tracker.get_bbox() for tracker in trackers]
                 for name, trackers in self.kalman_trackers.items()
             }
-      
+        else:
+            print(f"Color {color_name} not found")
+            return {}
 
     def get_centroids(self, color_name: Optional[str] = None) -> Dict[str, List[Tuple[int, int]]]:
         """
@@ -404,7 +452,11 @@ class ColorTracker:
         centroids = {}
         # x, w, y, h
         for color_name, boxes in bboxes.items():
-            centroids[color_name] = [np.array([box[0] + box[2]/2, box[1] + box[3]/2]) for box in boxes]
+            centroids[color_name] = []
+            for box in boxes:
+                x, y, w, h = box
+                centroid = np.array([x + w/2, y + h/2])
+                centroids[color_name].append(centroid)
 
         
        
@@ -465,14 +517,12 @@ if __name__ == "__main__":
         birdseye_frame = aruco_polygon_detector.transform_image_to_birdseye(frame)
         processed_birdseye_frame = color_track.process_frame(birdseye_frame, draw_contours=True, draw_colors=True)
         
-        tracked_boxes = color_track.get_tracked_boxes('all')
-        for color_name, boxes in tracked_boxes.items():
-            for box in boxes:
-                x,y,w,h = box
-                max_y = y + h
+        tracked_centroids = color_track.get_centroids('all')
+        for color_name, centroids in tracked_centroids.items():
+            for centroid in centroids:
+                x,y = centroid
 
-
-                cv2.drawMarker(processed_birdseye_frame, (int(x), int(max_y)), (0, 255, 0), cv2.MARKER_CROSS, 10)
+                processed_birdseye_frame = cv2.drawMarker(processed_birdseye_frame, (int(x), int(y)), (0, 255, 0), cv2.MARKER_CROSS, 10)
         cv2.imshow("5-Color Detection (ROYGB)", processed_birdseye_frame)
         
         if cv2.waitKey(1) & 0xFF == ord('q'):
