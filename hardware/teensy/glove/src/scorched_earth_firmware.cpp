@@ -5,10 +5,13 @@
 
 #define TEENSY_HAND Hand::Left
 
+const int PRESS_THRESHOLD = 45;   // threshold to register a press
+const int RELEASE_THRESHOLD = 25; // threshold to register a release (hysteresis) needs a lesser value 
+
 const int NUM_VELOSTAT = 5; 
 
 //LEFT PINS:
-const int VELOSTAT_PINS[NUM_VELOSTAT] = {14, 18, 19, 21, 20}; 
+const int VELOSTAT_PINS[NUM_VELOSTAT] = {14, 18, 19, 20, 21}; 
 int maxPress[NUM_VELOSTAT];
 
 // set default state of pressed vs unpressed to be unpressed
@@ -204,59 +207,48 @@ int getVelocity(bool currentlyPressed, int raw, int fingerIndex){
  * Checks the state of each velostat sensor and sends press/release events to RasPi.
  * Primary call for freeplay mode, embedded call for learning mode.
  */
+
 void checkFingerPress() {
-  for (unsigned int i = 0; i < NUM_VELOSTAT; i++) {
-    int raw = analogRead(VELOSTAT_PINS[i]);
-    
-    bool currentlyPressed = raw >= (gBaseline[i] + THRESHOLD);
+    unsigned long now = millis();
 
-    // transition: unpressed -> pressed
-    if (currentlyPressed && !gSensorState[i]) {
-      //Serial1.print("Sensor ");
-      //Serial1.println(i);     // send "note on" to receiver
-    
-      // SENDS TO RASPI
-      // Serial.write(static_cast<uint8_t>(TEENSY_HAND));
-      // Serial.write(static_cast<uint8_t>(SensorValue::PRESSED));
-      // Serial.write(static_cast<uint8_t>(i));     // send "note on" to receiver
-      // Serial.write(static_cast<uint8_t>(getVelocity(currentlyPressed, raw, i))); // send velocity value
+    for (unsigned int i = 0; i < NUM_VELOSTAT; i++) {
+        int raw = analogRead(VELOSTAT_PINS[i]);
+        bool currentlyPressed = gSensorState[i]; // default: maintain previous state
 
-      Serial.print("Press - Hand: ");
-      Serial.print(static_cast<int>(TEENSY_HAND));
-      Serial.print(", Finger: ");
-      Serial.print(i);
-      Serial.print(", Velocity: ");
-      Serial.println(getVelocity(currentlyPressed, raw, i));
+        // Hysteresis logic
+        if (!gSensorState[i] && raw >= gBaseline[i] + PRESS_THRESHOLD) {
+            currentlyPressed = true; // transition: unpressed -> pressed
+        } 
+        else if (gSensorState[i] && raw <= gBaseline[i] + RELEASE_THRESHOLD) {
+            currentlyPressed = false; // transition: pressed -> released
+        }
 
+        // Only act on state change
+        if (currentlyPressed != gSensorState[i]) {
+            gSensorState[i] = currentlyPressed; // update state
 
-      gSensorState[i] = true;  // remember it's pressed
-    } 
-    // transition: pressed -> released
-    else if (!currentlyPressed && gSensorState[i]) {
-      Serial1.print("SensorReleased ");
-      Serial1.println(i);     // send "note off" to receiver
-
-      // // SENDING IT TO RASPI
-      // Serial.write(static_cast<uint8_t>(TEENSY_HAND));
-      // Serial.write(static_cast<uint8_t>(SensorValue::RELEASED));
-      // Serial.write(static_cast<uint8_t>(i));     // send "note off" to receiver
-      // Serial.write(static_cast<uint8_t>(0)); // velocity 0 on release
-
-
-      Serial.print("Release - Hand: ");
-      Serial.print(static_cast<int>(TEENSY_HAND));
-      Serial.print(", Finger: ");
-      Serial.print(i);
-      Serial.print(", Velocity: ");
-      Serial.println(getVelocity(currentlyPressed, raw, i));
-
-
-      gSensorState[i] = false; // update state
+            if (currentlyPressed) {
+                Serial.print("Press - Hand: ");
+                Serial.print(static_cast<int>(TEENSY_HAND));
+                Serial.print(", Finger: ");
+                Serial.print(i);
+                Serial.print(", Velocity: ");
+                Serial.println(getVelocity(true, raw, i));
+            } 
+            else {
+                Serial.print("Release - Hand: ");
+                Serial.print(static_cast<int>(TEENSY_HAND));
+                Serial.print(", Finger: ");
+                Serial.print(i);
+                Serial.print(", Velocity: ");
+                Serial.println(getVelocity(false, raw, i));
+            }
+        }
     }
-
-    // if pressed and already marked as pressed, do nothing
-  }
+    // debounce delay
+    delay(50);
 }
+
 
 /**
  * SETUP FUNCTION TO RUN AT STARTUP AND AID IN SELECTING SONG/ MODE
