@@ -398,6 +398,7 @@ class LeftGloveSerialManager(BaseSerialManager):
     def receive_byte(self) -> Optional[int]:
         """
         Recieve a single byte from the glove controller.
+        Blocking until a byte is received.
         """
 
         # Recieve byte
@@ -713,49 +714,4 @@ class AudioBoardManager:
 
 
 
-def main():
-    # example usage
-    teensy_connect()
 
-    result = left_glove.connect()
-    while not result:
-        time.sleep(1)
-        result = left_glove.connect()
-
-    result = right_glove.connect()
-    while not result:
-        time.sleep(1)
-        result = right_glove.connect()
-
-    result = audio_board.connect(exclude_ports=[LEFT_PORT, RIGHT_PORT])
-    while not result:
-        time.sleep(1)
-        result = audio_board.connect(exclude_ports=[LEFT_PORT, RIGHT_PORT])
-
-    if result:
-        left_glove.start()
-        right_glove.start()
-        audio_board.start()
-
-
-    while True:
-        time.sleep(1)
-        left_responses = left_glove.get_responses()
-        if left_responses:
-            for response in left_responses:
-                instruction = left_glove.handle_line_rx(response)
-                if instruction:
-                    # check finger position on cv
-                    pass
-
-        right_responses = right_glove.get_responses()
-        if right_responses:
-            for response in right_responses:
-                right_glove.handle_line_rx(response)
-        
-# both serial listeners
-    # left_thread = threading.Thread(target=read_from_teensy, args=(LEFT_PORT, 'L'))
-    # right_thread = threading.Thread(target=read_from_teensy, args=(RIGHT_PORT, 'R'))
-
-    # left_thread.start()
-    # right_thread.start()

@@ -19,7 +19,10 @@ import numpy as np
 import time as time
 import math
 import matplotlib.pyplot as plt
+import logging
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Import ArUco system from the pose_tracker module
 try:
