@@ -11,7 +11,12 @@ const int RELEASE_THRESHOLD = 25; // threshold to register a release (hysteresis
 const int NUM_VELOSTAT = 5; 
 
 //LEFT PINS:
-const int VELOSTAT_PINS[NUM_VELOSTAT] = {14, 18, 19, 20, 21}; 
+//const int VELOSTAT_PINS[NUM_VELOSTAT] = {14, 18, 19, 20, 21}; 
+
+//RIGHT PINS
+const int VELOSTAT_PINS[NUM_VELOSTAT] = {21, 20, 19, 18, 14}; 
+
+
 int maxPress[NUM_VELOSTAT];
 
 // set default state of pressed vs unpressed to be unpressed
@@ -22,6 +27,7 @@ const int THRESHOLD = 45;
 int gBaseline[NUM_VELOSTAT];
 const int ADC_BITS = 12;
 #define FLEX_WRIST 22
+
 
 /**
  * Velostat Calibration Function
@@ -261,6 +267,11 @@ void setup() {
     Serial.println("Scorched Earth Firmware Starting...");
     calibrateVelostat(); // velostat and flex sensor
     Serial.println("DEBUG: EXITING CALIBRATION");
+
+    delay(100);
+
+    Serial.println("DEBUG: ENTERING HAPTIC CALIBRATION");
+    calibrateHaptics();
 
 }
 
