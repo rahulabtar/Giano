@@ -221,8 +221,11 @@ def main():
             # sort by x coordinate, because the keyboard is backwards, assume the leftmost x is the righthand
             # TODO: see if the kalman filter tracks the hand
             sorted_color_tracking_points = sorted(color_tracking_points, key=lambda x: x[0])
+
+        #recieve from serial byte and forward to audiohat
             
         cv.imshow("Tracked", tracked_image)
+
 
         # find hands, return drawn image
         

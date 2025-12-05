@@ -570,7 +570,9 @@ class LeftGloveSerialManager(BaseSerialManager):
             try:
                 if self.conn and self.conn.in_waiting > 3: # 3 bytes is the size of the message
                     line = self.conn.read(3)
-                    self.recv_queue.put_nowait(line)
+                    self.recv_queue.put_nowait(line) # puts into que 
+
+                    
                     # TODO: See where handling lines should go
                     # self.handle_line_rx(line)
 

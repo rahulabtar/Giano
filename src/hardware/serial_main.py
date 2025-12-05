@@ -92,13 +92,28 @@ if __name__ == "__main__":
   left_glove, right_glove, audio_board = teensy_connect()
 
   teensy_calibrate(left_glove, right_glove, audio_board)
-    
+  # if check mode
+  #code for freeplay
+  #code for learning mode
+
+  while True:
+    if left_glove._play_mode == PlayingMode.FreePlayMode:
+      # if right glove is in the correct mode change to free play mode ???
+      #right_glove.change_mode(PlayingMode.FREEPLAY_MODE)
+      while True:
+        # get responses from gloves
+        left_glove.get_responses()
+        right_glove.get_responses()
+        # check if reesponse is a button interupt to exit free play mode
+        #break
+        time.sleep(0.1) #sleep needed 
+    elif left_glove._play_mode == PlayingMode.LEARNING_MODE:
+      pass
+
+      
 
 
   
-
-  
-
 
 #gloves_connect()
 
