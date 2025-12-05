@@ -22,8 +22,8 @@ class Hand(IntEnum):
     RIGHT = 255
 
 class SensorValue(IntEnum):
-    Pressed=0
-    Released=1
+    Pressed=2
+    Released=3
 
 
 # TODO: make sure I need to have this
