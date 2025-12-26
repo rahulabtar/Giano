@@ -7,7 +7,7 @@ https://drive.google.com/file/d/15r4yW2DcvK2gV_iGeFV_x0DjYsqAIXms/view?usp=shari
 
 Video Showcase:
 
-[![Watch the demo](https://img.youtube.com/vi/8nvKlpSBbt4/maxresdefault.jpg)](https://www.youtube.com/watch?v=8nvKlpSBbt4)
+[![Watch the demo](https://img.youtube.com/vi/8nvKlpSBbt4/hqdefault.jpg)](https://www.youtube.com/watch?v=8nvKlpSBbt4)
 
 
 https://www.youtube.com/watch?v=8nvKlpSBbt4
