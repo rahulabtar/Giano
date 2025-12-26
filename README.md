@@ -11,10 +11,7 @@ A comprehensive vision-free system for piano learning using computer vision, hap
 
 [![Watch the demo](https://img.youtube.com/vi/8nvKlpSBbt4/hqdefault.jpg)](https://www.youtube.com/watch?v=8nvKlpSBbt4)
 
-##### Backup Link 1:
-https://www.youtube.com/watch?v=8nvKlpSBbt4
-##### Backup Link 2:
-https://drive.google.com/file/d/1QwXnAL0ZPy7AO7pA263gKI63Led_mSv_/view?usp=sharing 
+##### Backup Link: https://drive.google.com/file/d/1QwXnAL0ZPy7AO7pA263gKI63Led_mSv_/view?usp=sharing 
 
 ## Presentation:
 https://drive.google.com/file/d/1_xte62nUb1mgipRbV4Z2w1OAowi4HhDI/view?usp=sharing
