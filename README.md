@@ -41,17 +41,17 @@ A comprehensive vision-free system for piano learning using computer vision, hap
     <tr>
       <td>
         <a href="docs/GianoReport.pdf">
-          <img src="assets/GianoRepImage2.png" alt="Open PDF" width="200">
+          <img src="assets/GianoRepImage2.png" alt="Open PDF" width="275">
         </a>
       </td>
       <td>
         <a href="docs/GianoReport.pdf">
-          <img src="assets/GianoRepImage.png" alt="Open PDF" width="200">
+          <img src="assets/GianoRepImage.png" alt="Open PDF" width="275">
         </a>
       </td>
       <td>
         <a href="docs/GianoReport.pdf">
-          <img src="assets/GianoRepImage1.png" alt="Open PDF" width="200">
+          <img src="assets/GianoRepImage1.png" alt="Open PDF" width="275">
         </a>
       </td>
     </tr>
