@@ -18,7 +18,7 @@ A comprehensive vision-free system for piano learning using computer vision, hap
 
 ##### Backup Link: https://drive.google.com/file/d/1QwXnAL0ZPy7AO7pA263gKI63Led_mSv_/view?usp=sharing 
 
-## 🗣 **Click below to learn more with our presentation:
+## 🗣 **Click below to learn more with our presentation:**
 
 <div align="center">
   <table>
@@ -39,7 +39,7 @@ A comprehensive vision-free system for piano learning using computer vision, hap
 
 ##### Backup Link: https://drive.google.com/file/d/1_xte62nUb1mgipRbV4Z2w1OAowi4HhDI/view?usp=sharing
 
-## 📄 **Or learn more with our Comprehensive Report...
+## 📄 **Or learn more with our Comprehensive Report...**
 
 <div align="center">
   <table>
