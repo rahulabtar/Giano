@@ -13,12 +13,25 @@ A comprehensive vision-free system for piano learning using computer vision, hap
 
 ##### Backup Link: https://drive.google.com/file/d/1QwXnAL0ZPy7AO7pA263gKI63Led_mSv_/view?usp=sharing 
 
-## 🗣 Click the image below to learn more with our presentation:
-<p align="center">
-  <a href="docs/GianoPres.pdf">
-    <img src="assets/GianoRepImage.png" alt="Open PDF" width="600">
-  </a>
-</p>
+## 🗣 Click the images below to learn more with our presentation:
+
+<div align="center">
+  <table>
+    <tr>
+      <td>
+        <a href="docs/GianoPres.pdf">
+          <img src="assets/GianoPresImage1.png" width="300">
+        </a>
+      </td>
+      <td>
+        <a href="assets/GianoPres.pdf">
+          <img src="assets/GianoPresImage.png" width="300">
+        </a>
+      </td>
+    </tr>
+  </table>
+</div>
+
 
 
 ##### Backup Link: https://drive.google.com/file/d/1_xte62nUb1mgipRbV4Z2w1OAowi4HhDI/view?usp=sharing
