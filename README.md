@@ -2,10 +2,10 @@
 
 A comprehensive system for piano learning using computer vision, haptic feedback gloves, and audio synthesis. Created by Nouriya Al-Sumait, Ajith George, Celine Habr, Sky Profita, Rahul Singh, and Nikolas Varga for Northeastern University EEECE Capstone Design.
 
-##Paper: 
+## Paper: 
 https://drive.google.com/file/d/15r4yW2DcvK2gV_iGeFV_x0DjYsqAIXms/view?usp=sharing
 
-##Video Showcase ▶️ **Click the image below to watch the demo**
+## Video Showcase ▶️ **Click the image below to watch the demo**
 
 [![Watch the demo](https://img.youtube.com/vi/8nvKlpSBbt4/hqdefault.jpg)](https://www.youtube.com/watch?v=8nvKlpSBbt4)
 
