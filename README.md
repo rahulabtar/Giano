@@ -1,8 +1,11 @@
 # Giano - Guided Assisted Piano Learning System
 
+<p align="center">
+  <img src="assets/GianoGlove2.png" width="600" alt="Demo Image">
+</p>
+
 A comprehensive system for piano learning using computer vision, haptic feedback gloves, and audio synthesis. Created by Nouriya Al-Sumait, Ajith George, Celine Habr, Sky Profita, Rahul Singh, and Nikolas Varga for Northeastern University EEECE Capstone Design.
 
-![Demo Image](assets/GianoGlove2.png)
 
 ## ▶️ **Click the image below to watch the demo!**
 
