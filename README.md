@@ -6,6 +6,11 @@ Paper:
 https://drive.google.com/file/d/15r4yW2DcvK2gV_iGeFV_x0DjYsqAIXms/view?usp=sharing
 
 Video Showcase:
+
+<a href="http://www.youtube.com/watch?feature=player_embedded&v=https://www.youtube.com/watch?v=8nvKlpSBbt4
+" target="_blank"><img src="http://img.youtube.com/vi/https://www.youtube.com/watch?v=8nvKlpSBbt4/0.jpg" 
+alt="IMAGE ALT TEXT HERE" width="240" height="180" border="10" /></a>
+
 https://www.youtube.com/watch?v=8nvKlpSBbt4
 https://drive.google.com/file/d/1QwXnAL0ZPy7AO7pA263gKI63Led_mSv_/view?usp=sharing 
 
