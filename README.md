@@ -7,7 +7,7 @@
 A comprehensive vision-free system for piano learning using computer vision, haptic feedback gloves, and audio synthesis. Created by Nouriya Al-Sumait, Ajith George, Celine Habr, Sky Profita, Rahul Singh, and Nikolas Varga for Northeastern University EEECE Capstone Design.
 
 
-## ▶️ **Click the image below to watch the demo!**
+## ▶️ **Click below to watch the demo!**
 
 [![Watch the demo](https://img.youtube.com/vi/8nvKlpSBbt4/hqdefault.jpg)](https://www.youtube.com/watch?v=8nvKlpSBbt4)
 
@@ -24,7 +24,7 @@ A comprehensive vision-free system for piano learning using computer vision, hap
         </a>
       </td>
       <td>
-        <a href="assets/GianoPres.pdf">
+        <a href="docs/GianoPres.pdf">
           <img src="assets/GianoPresImage.png" width="450">
         </a>
       </td>
@@ -32,16 +32,37 @@ A comprehensive vision-free system for piano learning using computer vision, hap
   </table>
 </div>
 
-
-
 ##### Backup Link: https://drive.google.com/file/d/1_xte62nUb1mgipRbV4Z2w1OAowi4HhDI/view?usp=sharing
 
-## 📄 **Click image below to read our Comprehensive Report
+## 📄 ** Or see more in our Comprehensive Report...
 <p align="center">
   <a href="docs/GianoReport.pdf">
     <img src="assets/GianoPresImage.png" alt="Open PDF" width="600">
   </a>
 </p>
+
+<div align="center">
+  <table>
+    <tr>
+      <td>
+        <a href="docs/GianoReport.pdf">
+          <img src="assets/GianoPresImage2.png" alt="Open PDF" width="200">
+        </a>
+      </td>
+      <td>
+        <a href="docs/GianoReport.pdf">
+          <img src="assets/GianoPresImage.png" alt="Open PDF" width="200">
+        </a>
+      </td>
+      <td>
+        <a href="docs/GianoReport.pdf">
+          <img src="assets/GianoPresImage1.png" alt="Open PDF" width="200">
+        </a>
+      </td>
+    </tr>
+  </table>
+</div>
+
 
 ##### Backup Link: https://drive.google.com/file/d/15r4yW2DcvK2gV_iGeFV_x0DjYsqAIXms/view?usp=sharing
 
