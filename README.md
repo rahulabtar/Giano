@@ -13,7 +13,7 @@ A comprehensive vision-free system for piano learning using computer vision, hap
 
 ##### Backup Link: https://drive.google.com/file/d/1QwXnAL0ZPy7AO7pA263gKI63Led_mSv_/view?usp=sharing 
 
-## 🗣 Click the images below to learn more with our presentation:
+## 🗣 Click below to learn more with our presentation:
 
 <div align="center">
   <table>
@@ -34,7 +34,7 @@ A comprehensive vision-free system for piano learning using computer vision, hap
 
 ##### Backup Link: https://drive.google.com/file/d/1_xte62nUb1mgipRbV4Z2w1OAowi4HhDI/view?usp=sharing
 
-## 📄 ** Or see more in our Comprehensive Report...
+## 📄 ** Or learn more with our Comprehensive Report...
 <p align="center">
   <a href="docs/GianoReport.pdf">
     <img src="assets/GianoPresImage.png" alt="Open PDF" width="600">
@@ -46,17 +46,17 @@ A comprehensive vision-free system for piano learning using computer vision, hap
     <tr>
       <td>
         <a href="docs/GianoReport.pdf">
-          <img src="assets/GianoPresImage2.png" alt="Open PDF" width="200">
+          <img src="assets/GianoRepImage2.png" alt="Open PDF" width="200">
         </a>
       </td>
       <td>
         <a href="docs/GianoReport.pdf">
-          <img src="assets/GianoPresImage.png" alt="Open PDF" width="200">
+          <img src="assets/GianoRepImage.png" alt="Open PDF" width="200">
         </a>
       </td>
       <td>
         <a href="docs/GianoReport.pdf">
-          <img src="assets/GianoPresImage1.png" alt="Open PDF" width="200">
+          <img src="assets/GianoRepImage1.png" alt="Open PDF" width="200">
         </a>
       </td>
     </tr>
