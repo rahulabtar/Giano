@@ -1,4 +1,4 @@
-# Giano - Guided Assisted Piano Learning System
+# 🎹 Giano - Guided Assisted Piano Learning System
 
 <p align="center">
   <img src="assets/GianoGlove2.png" width="600" alt="Demo Image">
